@@ -1,0 +1,56 @@
+<!doctype html>
+<html>
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>Graph Mailer Config</title>
+<style>
+body { font-family: system-ui, -apple-system, Segoe UI, Roboto, sans-serif; padding: 16px; }
+textarea { width: 100%; height: 260px; }
+.row { margin: 12px 0; }
+button { font-size: 16px; padding: 10px 14px; }
+code { background: #f4f4f4; padding: 2px 6px; border-radius: 4px; }
+</style>
+</head>
+<body>
+<h1>Graph Mailer Settings</h1>
+<p>Paste JSON with <code>contacts</code> and <code>graph.accessToken</code>. Example:</p>
+<pre>{
+"contacts": [
+{ "name": "Alice", "email": "alice@example.com" },
+{ "name": "Bob", "email": "bob@example.com" }
+],
+"graph": { "accessToken": "eyJ..." }
+}</pre>
+
+
+<div class="row">
+<textarea id="json"></textarea>
+</div>
+<div class="row">
+<button id="save">Save</button>
+<button id="cancel">Cancel</button>
+</div>
+
+
+<script>
+(function() {
+function query(key) { return decodeURIComponent((location.search.split(key + '=')[1] || '').split('&')[0] || ''); }
+var existing = query('settings') || '{}';
+try { document.getElementById('json').value = JSON.stringify(JSON.parse(existing), null, 2); }
+catch (e) { document.getElementById('json').value = existing; }
+
+
+document.getElementById('save').onclick = function() {
+var val = document.getElementById('json').value;
+try { JSON.parse(val); } catch (e) { return alert('Invalid JSON: ' + e); }
+var returnURL = 'pebblejs://close#' + encodeURIComponent(val);
+document.location = returnURL;
+};
+document.getElementById('cancel').onclick = function() {
+document.location = 'pebblejs://close';
+};
+})();
+</script>
+</body>
+</html>

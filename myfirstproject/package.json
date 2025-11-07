@@ -1,13 +1,17 @@
 {
-  "name": "myfirstproject",
-  "author": "MakeAwesomeHappen",
-  "version": "1.0.0",
-  "keywords": ["pebble-app"],
+  "name": "graph-mailer",
+  "author": "Matt Novelli",
+  "version": "1.1.0",
+  "keywords": [
+    "pebble-app"
+  ],
   "private": true,
-  "dependencies": {},
+  "dependencies": {
+    "pebble-clay": "^1.0.4"
+  },
   "pebble": {
-    "displayName": "myfirstproject",
-    "uuid": "00000000-0000-0000-0000-000000000001",
+    "displayName": "Graph Mailer",
+    "uuid": "b6b5f1c9-2a6b-4b35-bc5b-7b2e6fb6f5cc",
     "sdkVersion": "3",
     "enableMultiJS": true,
     "targetPlatforms": [
@@ -20,8 +24,15 @@
     "watchapp": {
       "watchface": false
     },
+    "capabilities": [
+      "configurable"
+    ],
     "messageKeys": [
-      "dummy"
+      "KEY_CONTACT_INDEX",
+      "KEY_VOICE_TEXT", 
+      "KEY_ERROR",
+      "KEY_STATUS",
+      "KEY_CONTACT_NAMES"
     ],
     "resources": {
       "media": []
