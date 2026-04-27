@@ -57,7 +57,7 @@ function handleAppMessage(e) {
   if (!s.graph || !s.graph.accessToken) {
     console.log('ERROR: Missing access token');
     var msg = {};
-    msg[KEY_ERROR] = 'Missing access token - check settings';
+    msg[KEY_ERROR] = 'Missing access token - please sign in';
     Pebble.sendAppMessage(msg);
     return;
   }
@@ -72,13 +72,35 @@ function handleAppMessage(e) {
 
   var contact = s.contacts[index];
   console.log('Sending message for contact: ' + contact.name + ' (' + contact.phone + ')');
-  console.log('Target email: ' + s.targetEmail);
-  console.log('Voice transcription: ' + text);
 
+  // Send status update to watch
+  var statusMsg = {};
+  statusMsg[KEY_STATUS] = 'Authenticating...';
+  Pebble.sendAppMessage(statusMsg);
+
+  // Ensure we have a valid token before sending
+  ensureValidToken(function(error, accessToken) {
+    if (error) {
+      console.log('ERROR: Token validation failed:', error);
+      var msg = {};
+      msg[KEY_ERROR] = 'Authentication failed - please sign in again';
+      Pebble.sendAppMessage(msg);
+      return;
+    }
+
+    console.log('Token validated successfully, proceeding with email send');
+    sendEmailWithToken(accessToken, contact, text, s.targetEmail);
+  });
+}
+
+// Separate function to handle the actual email sending
+function sendEmailWithToken(accessToken, contact, messageText, targetEmail) {
+  console.log('Sending email with validated token...');
+  
   // Create the JSON object for SMS processing
   var messageData = {
     recipient: contact.name,
-    message: text
+    message: messageText
   };
 
   var emailBody = JSON.stringify(messageData);
@@ -89,205 +111,136 @@ function handleAppMessage(e) {
     message: {
       subject: 'NEW TEXT MESSAGE',
       body: { contentType: 'Text', content: emailBody },
-      toRecipients: [ { emailAddress: { address: s.targetEmail } } ]
+      toRecipients: [ { emailAddress: { address: targetEmail } } ]
     },
     saveToSentItems: true
   };
 
-  console.log('Sending email via Microsoft Graph...');
-  console.log('Request URL: https://graph.microsoft.com/v1.0/me/sendMail');
-  console.log('Request headers: Authorization: Bearer ' + s.graph.accessToken.substring(0, 20) + '...');
-  console.log('Request body: ' + JSON.stringify(body, null, 2));
-  
-  // Check if fetch is available
-  console.log('Fetch function available: ' + (typeof fetch === 'function'));
-  console.log('Promise available: ' + (typeof Promise === 'function'));
-  console.log('XMLHttpRequest available: ' + (typeof XMLHttpRequest === 'function'));
-  
-  if (typeof fetch !== 'function') {
-    console.log('ERROR: fetch is not available, trying XMLHttpRequest...');
-    
-    if (typeof XMLHttpRequest !== 'function') {
-      console.log('ERROR: XMLHttpRequest also not available');
-      var msg = {};
-      msg[KEY_ERROR] = 'Network API not available';
-      Pebble.sendAppMessage(msg);
-      return;
-    }
-    
-    // Use XMLHttpRequest instead
-    console.log('Using XMLHttpRequest fallback...');
-    
-    var xhr = new XMLHttpRequest();
-    xhr.open('GET', 'https://graph.microsoft.com/v1.0/me');
-    xhr.setRequestHeader('Authorization', 'Bearer ' + s.graph.accessToken);
-    
-    xhr.onreadystatechange = function() {
-      console.log('XHR readyState: ' + xhr.readyState + ', status: ' + xhr.status);
-      
-      if (xhr.readyState === 4) {
-        if (xhr.status === 200) {
-          console.log('Token validation successful via XHR');
-          console.log('Response: ' + xhr.responseText);
-          
-          // Now try to send the actual email
-          var emailXhr = new XMLHttpRequest();
-          emailXhr.open('POST', 'https://graph.microsoft.com/v1.0/me/sendMail');
-          emailXhr.setRequestHeader('Authorization', 'Bearer ' + s.graph.accessToken);
-          emailXhr.setRequestHeader('Content-Type', 'application/json');
-          
-          emailXhr.onreadystatechange = function() {
-            console.log('Email XHR readyState: ' + emailXhr.readyState + ', status: ' + emailXhr.status);
-            
-            if (emailXhr.readyState === 4) {
-              if (emailXhr.status === 202 || emailXhr.status === 200) {
-                console.log('SUCCESS: Email sent via XHR');
-                var msg = {};
-                msg[KEY_STATUS] = 'Email sent to ' + contact.name + '!';
-                Pebble.sendAppMessage(msg);
-              } else {
-                console.log('ERROR: Email failed via XHR - ' + emailXhr.status + ': ' + emailXhr.responseText);
-                var msg = {};
-                msg[KEY_ERROR] = 'Email failed: HTTP ' + emailXhr.status;
-                Pebble.sendAppMessage(msg);
-              }
-            }
-          };
-          
-          emailXhr.send(JSON.stringify(body));
-        } else {
-          console.log('Token validation failed via XHR: ' + xhr.status + ': ' + xhr.responseText);
-          var msg = {};
-          msg[KEY_ERROR] = 'Token validation failed';
-          Pebble.sendAppMessage(msg);
-        }
-      }
-    };
-    
-    xhr.send();
-    return;
-  }
-  
-  // Send status update to watch
+  // Update status
   var statusMsg = {};
   statusMsg[KEY_STATUS] = 'Sending email...';
   Pebble.sendAppMessage(statusMsg);
 
-  // First, test the access token by getting user info
-  console.log('Testing access token with /me endpoint...');
+  console.log('Sending email via Microsoft Graph...');
+  console.log('Request URL: https://graph.microsoft.com/v1.0/me/sendMail');
+  console.log('Request body: ' + JSON.stringify(body, null, 2));
   
-  // Add immediate error catching
-  var testPromise = fetch('https://graph.microsoft.com/v1.0/me', {
-    method: 'GET',
-    headers: {
-      'Authorization': 'Bearer ' + s.graph.accessToken
-    }
+  // Try modern fetch first, fallback to XMLHttpRequest
+  if (typeof fetch === 'function') {
+    sendEmailWithFetch(accessToken, body, contact);
+  } else {
+    sendEmailWithXHR(accessToken, body, contact);
+  }
+}
+
+function sendEmailWithFetch(accessToken, body, contact) {
+  console.log('Using fetch API for email sending...');
+  
+  var timeoutPromise = new Promise(function(resolve, reject) {
+    setTimeout(function() {
+      console.log('TIMEOUT: Email request timed out after 30 seconds');
+      reject(new Error('Request timeout after 30 seconds'));
+    }, 30000);
   });
-  
-  console.log('Fetch promise created, waiting for response...');
-  
-  testPromise
-  testPromise
-  .then(function(testResp) {
-    console.log('=== RECEIVED RESPONSE FROM /me ENDPOINT ===');
-    console.log('Token test response status: ' + testResp.status);
-    console.log('Token test response headers: ' + JSON.stringify(Array.from(testResp.headers.entries())));
+
+  var fetchPromise = fetch('https://graph.microsoft.com/v1.0/me/sendMail', {
+    method: 'POST',
+    headers: {
+      'Authorization': 'Bearer ' + accessToken,
+      'Content-Type': 'application/json'
+    },
+    body: JSON.stringify(body)
+  })
+  .then(function(response) {
+    console.log('Email API response status: ' + response.status);
+    console.log('Email API response headers: ' + JSON.stringify(Array.from(response.headers.entries())));
     
-    if (testResp.status !== 200) {
-      return testResp.text().then(function(errorText) {
-        console.log('Token test error body: ' + errorText);
-        throw new Error('Token validation failed with status ' + testResp.status + ': ' + errorText);
+    if (response.status === 202 || response.status === 200) {
+      console.log('SUCCESS: Email sent successfully via fetch');
+      return { success: true, status: response.status };
+    } else {
+      return response.text().then(function(errorText) {
+        console.log('Email API error body: ' + errorText);
+        throw new Error('HTTP ' + response.status + ': ' + errorText);
       });
     }
-    return testResp.json();
-  })
-  .catch(function(err) {
-    console.log('=== ERROR IN TOKEN TEST ===');
-    console.log('Token test failed immediately: ' + err);
-    console.log('Error type: ' + typeof err);
-    console.log('Error message: ' + (err.message || 'No message'));
-    console.log('Error stack: ' + (err.stack || 'No stack'));
-    
-    // Try to send error to watch
-    var msg = {};
-    msg[KEY_ERROR] = 'Network error - cannot reach Microsoft Graph';
-    Pebble.sendAppMessage(msg);
-    
-    throw err; // Re-throw to stop the chain
-  })
-  .then(function(userInfo) {
-    console.log('Token valid! User: ' + (userInfo.displayName || userInfo.userPrincipalName));
-    console.log('User info: ' + JSON.stringify(userInfo, null, 2));
-    console.log('Now sending actual email...');
-    
-    // Create a timeout promise
-    var timeoutPromise = new Promise(function(resolve, reject) {
-      setTimeout(function() {
-        console.log('TIMEOUT: Email request timed out after 30 seconds');
-        reject(new Error('Request timeout after 30 seconds'));
-      }, 30000);
-    });
-
-    // Create the fetch promise
-    var fetchPromise = fetch('https://graph.microsoft.com/v1.0/me/sendMail', {
-      method: 'POST',
-      headers: {
-        'Authorization': 'Bearer ' + s.graph.accessToken,
-        'Content-Type': 'application/json'
-      },
-      body: JSON.stringify(body)
-    })
-    .then(function(emailResp) {
-      console.log('Email API response status: ' + emailResp.status);
-      console.log('Email API response headers: ' + JSON.stringify(Array.from(emailResp.headers.entries())));
-      
-      if (emailResp.status === 202 || emailResp.status === 200) {
-        console.log('SUCCESS: Email sent successfully');
-        return { success: true, status: emailResp.status };
-      } else {
-        return emailResp.text().then(function(errorText) {
-          console.log('Email API error body: ' + errorText);
-          throw new Error('HTTP ' + emailResp.status + ': ' + errorText);
-        });
-      }
-    });
-
-    // Race between fetch and timeout
-    return Promise.race([fetchPromise, timeoutPromise]);
-  })
-  .then(function(result) {
-    console.log('Email sending completed successfully!');
-    console.log('Final result: ' + JSON.stringify(result));
-    
-    var msg = {};
-    msg[KEY_STATUS] = 'Email sent to ' + contact.name + '!';
-    Pebble.sendAppMessage(msg);
-  })
-  .catch(function(err) {
-    console.log('ERROR: Email sending failed');
-    console.log('Error details: ' + err);
-    
-    var errorMsg = String(err && err.message || err);
-    if (errorMsg.includes('Token validation failed')) {
-      errorMsg = 'Access token expired or invalid';
-    } else if (errorMsg.includes('401') || errorMsg.includes('unauthorized')) {
-      errorMsg = 'Invalid access token';
-    } else if (errorMsg.includes('403') || errorMsg.includes('forbidden')) {
-      errorMsg = 'Permission denied - check token scope';
-    } else if (errorMsg.includes('400')) {
-      errorMsg = 'Invalid email format';
-    } else if (errorMsg.includes('timeout')) {
-      errorMsg = 'Request timed out - check connection';
-    } else if (errorMsg.includes('network') || errorMsg.includes('fetch')) {
-      errorMsg = 'Network error - check connection';
-    } else {
-      errorMsg = 'Email sending failed: ' + errorMsg;
-    }
-    
-    var msg = {};
-    msg[KEY_ERROR] = errorMsg;
-    Pebble.sendAppMessage(msg);
   });
+
+  Promise.race([fetchPromise, timeoutPromise])
+    .then(function(result) {
+      console.log('Email sending completed successfully!');
+      var msg = {};
+      msg[KEY_STATUS] = 'Email sent to ' + contact.name + '!';
+      Pebble.sendAppMessage(msg);
+    })
+    .catch(function(err) {
+      handleEmailError(err, contact);
+    });
+}
+
+function sendEmailWithXHR(accessToken, body, contact) {
+  console.log('Using XMLHttpRequest for email sending...');
+  
+  var xhr = new XMLHttpRequest();
+  xhr.timeout = 30000; // 30 second timeout
+  
+  xhr.onreadystatechange = function() {
+    if (xhr.readyState === 4) {
+      console.log('Email XHR response - status: ' + xhr.status);
+      
+      if (xhr.status === 202 || xhr.status === 200) {
+        console.log('SUCCESS: Email sent successfully via XHR');
+        var msg = {};
+        msg[KEY_STATUS] = 'Email sent to ' + contact.name + '!';
+        Pebble.sendAppMessage(msg);
+      } else {
+        console.log('Email XHR error: ' + xhr.responseText);
+        var error = new Error('HTTP ' + xhr.status + ': ' + xhr.responseText);
+        handleEmailError(error, contact);
+      }
+    }
+  };
+  
+  xhr.ontimeout = function() {
+    console.log('Email XHR timed out');
+    var error = new Error('Request timeout after 30 seconds');
+    handleEmailError(error, contact);
+  };
+  
+  xhr.onerror = function() {
+    console.log('Email XHR network error');
+    var error = new Error('Network error during email send');
+    handleEmailError(error, contact);
+  };
+  
+  xhr.open('POST', 'https://graph.microsoft.com/v1.0/me/sendMail');
+  xhr.setRequestHeader('Authorization', 'Bearer ' + accessToken);
+  xhr.setRequestHeader('Content-Type', 'application/json');
+  xhr.send(JSON.stringify(body));
+}
+
+function handleEmailError(err, contact) {
+  console.log('ERROR: Email sending failed');
+  console.log('Error details: ' + err);
+  
+  var errorMsg = String(err && err.message || err);
+  if (errorMsg.includes('401') || errorMsg.includes('unauthorized')) {
+    errorMsg = 'Access token expired - please sign in again';
+  } else if (errorMsg.includes('403') || errorMsg.includes('forbidden')) {
+    errorMsg = 'Permission denied - check token permissions';
+  } else if (errorMsg.includes('400')) {
+    errorMsg = 'Invalid email format';
+  } else if (errorMsg.includes('timeout')) {
+    errorMsg = 'Request timed out - check connection';
+  } else if (errorMsg.includes('network') || errorMsg.includes('fetch')) {
+    errorMsg = 'Network error - check connection';
+  } else {
+    errorMsg = 'Email sending failed: ' + errorMsg;
+  }
+  
+  var msg = {};
+  msg[KEY_ERROR] = errorMsg;
+  Pebble.sendAppMessage(msg);
 }
 
 // Remove Clay completely - use traditional Pebble configuration
@@ -363,11 +316,213 @@ Pebble.addEventListener('ready', function() {
   }, 10000);
 });
 
+// OAuth 2.0 Configuration for Public Client (PKCE Flow)
+var OAUTH_CONFIG = {
+  clientId: 'YOUR_ENTRA_APP_CLIENT_ID_HERE', // Replace with your Entra App Client ID
+  tenantId: 'common', // Use 'common' for multi-tenant, or your specific tenant ID
+  redirectUri: 'https://pebble.github.io/oauth-receiver/', // Pebble's hosted OAuth receiver
+  scope: 'https://graph.microsoft.com/Mail.Send offline_access',
+  responseType: 'code', // Using authorization code with PKCE
+  responseMode: 'fragment' // Return tokens in URL fragment for security
+};
+
+// PKCE (Proof Key for Code Exchange) helper functions
+function generateCodeVerifier() {
+  var array = new Uint8Array(32);
+  if (typeof crypto !== 'undefined' && crypto.getRandomValues) {
+    crypto.getRandomValues(array);
+  } else {
+    // Fallback for older browsers
+    for (var i = 0; i < array.length; i++) {
+      array[i] = Math.floor(Math.random() * 256);
+    }
+  }
+  return base64URLEncode(array);
+}
+
+function base64URLEncode(buffer) {
+  var base64 = '';
+  var bytes = new Uint8Array(buffer);
+  for (var i = 0; i < bytes.byteLength; i++) {
+    base64 += String.fromCharCode(bytes[i]);
+  }
+  return btoa(base64)
+    .replace(/\+/g, '-')
+    .replace(/\//g, '_')
+    .replace(/=/g, '');
+}
+
+function generateCodeChallenge(codeVerifier) {
+  // For simplicity, we'll use plain text challenge method
+  // In production, you might want to implement SHA256 hashing
+  return codeVerifier;
+}
+
+// Generate OAuth authorization URL with PKCE
+function generateAuthUrl(state, codeVerifier) {
+  var codeChallenge = generateCodeChallenge(codeVerifier);
+  var baseUrl = 'https://login.microsoftonline.com/' + OAUTH_CONFIG.tenantId + '/oauth2/v2.0/authorize';
+  var params = [
+    'client_id=' + encodeURIComponent(OAUTH_CONFIG.clientId),
+    'response_type=' + encodeURIComponent(OAUTH_CONFIG.responseType),
+    'redirect_uri=' + encodeURIComponent(OAUTH_CONFIG.redirectUri),
+    'scope=' + encodeURIComponent(OAUTH_CONFIG.scope),
+    'response_mode=' + encodeURIComponent(OAUTH_CONFIG.responseMode),
+    'state=' + encodeURIComponent(state),
+    'code_challenge=' + encodeURIComponent(codeChallenge),
+    'code_challenge_method=plain' // Using plain text for simplicity
+  ];
+  return baseUrl + '?' + params.join('&');
+}
+
+// Exchange authorization code for tokens using PKCE
+function exchangeCodeForTokens(authCode, codeVerifier, callback) {
+  console.log('Exchanging authorization code for tokens...');
+  
+  var tokenUrl = 'https://login.microsoftonline.com/' + OAUTH_CONFIG.tenantId + '/oauth2/v2.0/token';
+  var body = [
+    'client_id=' + encodeURIComponent(OAUTH_CONFIG.clientId),
+    'scope=' + encodeURIComponent(OAUTH_CONFIG.scope),
+    'code=' + encodeURIComponent(authCode),
+    'redirect_uri=' + encodeURIComponent(OAUTH_CONFIG.redirectUri),
+    'grant_type=authorization_code',
+    'code_verifier=' + encodeURIComponent(codeVerifier)
+  ].join('&');
+  
+  var xhr = new XMLHttpRequest();
+  xhr.open('POST', tokenUrl);
+  xhr.setRequestHeader('Content-Type', 'application/x-www-form-urlencoded');
+  
+  xhr.onreadystatechange = function() {
+    if (xhr.readyState === 4) {
+      console.log('Token exchange response status:', xhr.status);
+      
+      if (xhr.status === 200) {
+        try {
+          var response = JSON.parse(xhr.responseText);
+          console.log('Token exchange successful');
+          callback(null, {
+            accessToken: response.access_token,
+            refreshToken: response.refresh_token,
+            expiresIn: response.expires_in,
+            tokenType: response.token_type,
+            scope: response.scope,
+            expiresAt: Date.now() + (response.expires_in * 1000)
+          });
+        } catch (e) {
+          console.log('Error parsing token response:', e);
+          callback('Failed to parse token response');
+        }
+      } else {
+        console.log('Token exchange failed:', xhr.responseText);
+        callback('Authentication failed: ' + xhr.status);
+      }
+    }
+  };
+  
+  xhr.send(body);
+}
+
+// Refresh access token using refresh token
+function refreshAccessToken(refreshToken, callback) {
+  console.log('Refreshing access token...');
+  
+  var tokenUrl = 'https://login.microsoftonline.com/' + OAUTH_CONFIG.tenantId + '/oauth2/v2.0/token';
+  var body = [
+    'client_id=' + encodeURIComponent(OAUTH_CONFIG.clientId),
+    'scope=' + encodeURIComponent(OAUTH_CONFIG.scope),
+    'refresh_token=' + encodeURIComponent(refreshToken),
+    'grant_type=refresh_token'
+  ].join('&');
+  
+  var xhr = new XMLHttpRequest();
+  xhr.open('POST', tokenUrl);
+  xhr.setRequestHeader('Content-Type', 'application/x-www-form-urlencoded');
+  
+  xhr.onreadystatechange = function() {
+    if (xhr.readyState === 4) {
+      console.log('Token refresh response status:', xhr.status);
+      
+      if (xhr.status === 200) {
+        try {
+          var response = JSON.parse(xhr.responseText);
+          console.log('Token refresh successful');
+          callback(null, {
+            accessToken: response.access_token,
+            refreshToken: response.refresh_token || refreshToken, // Some responses don't include new refresh token
+            expiresIn: response.expires_in,
+            tokenType: response.token_type,
+            scope: response.scope,
+            expiresAt: Date.now() + (response.expires_in * 1000)
+          });
+        } catch (e) {
+          console.log('Error parsing refresh response:', e);
+          callback('Failed to parse refresh response');
+        }
+      } else {
+        console.log('Token refresh failed:', xhr.responseText);
+        callback('Token refresh failed: ' + xhr.status);
+      }
+    }
+  };
+  
+  xhr.send(body);
+}
+
+// Check if token needs refresh and refresh if necessary
+function ensureValidToken(callback) {
+  var settings = getSettings();
+  
+  if (!settings.graph || !settings.graph.accessToken) {
+    callback('No access token available');
+    return;
+  }
+  
+  // Check if token is expired or will expire in the next 5 minutes
+  var now = Date.now();
+  var expiresAt = settings.graph.expiresAt || 0;
+  var bufferTime = 5 * 60 * 1000; // 5 minutes
+  
+  if (now + bufferTime >= expiresAt) {
+    console.log('Token expired or expiring soon, refreshing...');
+    
+    if (!settings.graph.refreshToken) {
+      callback('Token expired and no refresh token available');
+      return;
+    }
+    
+    refreshAccessToken(settings.graph.refreshToken, function(error, tokens) {
+      if (error) {
+        callback(error);
+        return;
+      }
+      
+      // Update settings with new tokens
+      settings.graph = tokens;
+      setSettings(settings);
+      callback(null, tokens.accessToken);
+    });
+  } else {
+    console.log('Token is still valid');
+    callback(null, settings.graph.accessToken);
+  }
+}
+
 // Traditional Pebble configuration approach
 Pebble.addEventListener('showConfiguration', function() {
   console.log('showConfiguration fired - opening config page');
   var settings = getSettings();
   var configData = encodeURIComponent(JSON.stringify(settings));
+  
+  // Generate state parameter and code verifier for OAuth security
+  var oauthState = Math.random().toString(36).substring(2, 15) + Math.random().toString(36).substring(2, 15);
+  var codeVerifier = generateCodeVerifier();
+  
+  // Store PKCE values for later use
+  localStorage.setItem('oauth_state', oauthState);
+  localStorage.setItem('code_verifier', codeVerifier);
+  
+  var authUrl = generateAuthUrl(oauthState, codeVerifier);
   
   // Use a simple hosted configuration page
   var configURL = 'data:text/html;charset=utf-8,' + encodeURIComponent(`
@@ -376,33 +531,66 @@ Pebble.addEventListener('showConfiguration', function() {
 <head>
     <meta charset="utf-8">
     <meta name="viewport" content="width=device-width, initial-scale=1">
-    <title>Graph Mailer Config</title>
+    <title>Send Message Config</title>
     <style>
-        body { font-family: Arial, sans-serif; padding: 20px; background: #f5f5f5; }
-        .form { background: white; padding: 20px; border-radius: 8px; box-shadow: 0 2px 10px rgba(0,0,0,0.1); }
+        body { font-family: Arial, sans-serif; padding: 20px; background: #f5f5f5; margin: 0; }
+        .form { background: white; padding: 20px; border-radius: 8px; box-shadow: 0 2px 10px rgba(0,0,0,0.1); max-width: 600px; margin: 0 auto; }
         .field { margin-bottom: 15px; }
-        label { display: block; margin-bottom: 5px; font-weight: bold; }
-        input { width: 100%; padding: 10px; border: 1px solid #ddd; border-radius: 4px; box-sizing: border-box; }
+        label { display: block; margin-bottom: 5px; font-weight: bold; color: #333; }
+        input { width: 100%; padding: 10px; border: 1px solid #ddd; border-radius: 4px; box-sizing: border-box; font-size: 14px; }
         input[type="password"] { font-family: monospace; }
         .section { margin-top: 30px; padding-top: 20px; border-top: 1px solid #eee; }
         .buttons { margin-top: 30px; text-align: center; }
         button { padding: 12px 24px; margin: 0 10px; border: none; border-radius: 4px; font-size: 16px; cursor: pointer; }
         .save { background: #007AFF; color: white; }
         .cancel { background: #8E8E93; color: white; }
+        .oauth-section { background: #f8f9fa; padding: 15px; border-radius: 4px; margin-bottom: 20px; }
+        .oauth-button { background: #0078d4; color: white; padding: 10px 20px; text-decoration: none; border-radius: 4px; display: inline-block; margin: 10px 0; }
+        .token-status { padding: 10px; border-radius: 4px; margin: 10px 0; }
+        .token-valid { background: #d4edda; color: #155724; border: 1px solid #c3e6cb; }
+        .token-invalid { background: #f8d7da; color: #721c24; border: 1px solid #f5c6cb; }
+        .token-info { font-size: 12px; color: #666; margin-top: 5px; }
+        .help-text { font-size: 12px; color: #666; margin-top: 5px; line-height: 1.4; }
+        .manual-section { margin-top: 15px; padding-top: 15px; border-top: 1px solid #eee; }
+        .toggle-manual { background: none; border: none; color: #007AFF; cursor: pointer; text-decoration: underline; font-size: 14px; }
     </style>
 </head>
 <body>
     <div class="form">
-        <h1>Graph Mailer Configuration</h1>
+        <h1>Send Message Configuration</h1>
         
-        <div class="field">
-            <label>Microsoft Graph Access Token</label>
-            <input type="password" id="accessToken" placeholder="Enter your access token">
-        </div>
+            <div class="oauth-section">
+                <h2>Microsoft Graph Authentication</h2>
+                <div id="authStatus" class="token-status" style="display: none;"></div>
+                <a href="#" id="loginButton" class="oauth-button">Sign in with Microsoft</a>
+                <div class="help-text">
+                    Sign in with your Microsoft account to allow the app to send emails on your behalf. 
+                    This uses the secure OAuth 2.0 flow with PKCE for public clients.
+                </div>
+                
+                <div class="manual-section">
+                    <button type="button" class="toggle-manual" onclick="toggleManualAuth()">
+                        Use manual token instead (advanced)
+                    </button>
+                    <div id="manualAuthSection" style="display: none;">
+                        <div class="field">
+                            <label>Access Token (Manual)</label>
+                            <input type="password" id="accessToken" placeholder="Enter access token manually">
+                            <div class="help-text">
+                                Only use this if OAuth sign-in doesn't work. Get tokens from Microsoft Graph Explorer.
+                                Tokens expire frequently and need manual renewal.
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
         
         <div class="field">
             <label>Target Email Address</label>
             <input type="email" id="targetEmail" placeholder="recipient@example.com">
+            <div class="help-text">
+                The email address where messages will be sent. This should be monitored by your iOS Shortcut.
+            </div>
         </div>
         
         <div class="section">
@@ -443,34 +631,186 @@ Pebble.addEventListener('showConfiguration', function() {
     </div>
 
     <script>
+        // OAuth configuration - these should match your Entra app registration
+        var OAUTH_CONFIG = {
+            clientId: '${OAUTH_CONFIG.clientId}',
+            authUrl: '${authUrl}'
+        };
+        
+        var currentSettings = {};
+        
         function loadSettings() {
             try {
                 var params = new URLSearchParams(window.location.search);
                 var data = params.get('data');
                 if (data) {
-                    var settings = JSON.parse(decodeURIComponent(data));
-                    document.getElementById('accessToken').value = settings.graph.accessToken || '';
-                    document.getElementById('targetEmail').value = settings.targetEmail || '';
+                    currentSettings = JSON.parse(decodeURIComponent(data));
                     
-                    for (var i = 0; i < settings.contacts.length && i < 3; i++) {
-                        document.getElementById('contact' + (i+1) + 'Name').value = settings.contacts[i].name || '';
-                        document.getElementById('contact' + (i+1) + 'Phone').value = settings.contacts[i].phone || '';
+                    // Show current auth status
+                    updateAuthStatus();
+                    
+                    document.getElementById('targetEmail').value = currentSettings.targetEmail || '';
+                    
+                    for (var i = 0; i < (currentSettings.contacts || []).length && i < 3; i++) {
+                        document.getElementById('contact' + (i+1) + 'Name').value = currentSettings.contacts[i].name || '';
+                        document.getElementById('contact' + (i+1) + 'Phone').value = currentSettings.contacts[i].phone || '';
                     }
+                    
+                    // Check for OAuth callback
+                    checkForOAuthCallback();
                 }
             } catch (e) {
                 console.log('Error loading settings: ' + e);
             }
         }
         
+        function updateAuthStatus() {
+            var statusDiv = document.getElementById('authStatus');
+            var loginButton = document.getElementById('loginButton');
+            
+            if (currentSettings.graph && currentSettings.graph.accessToken) {
+                var expiresAt = currentSettings.graph.expiresAt || 0;
+                var now = Date.now();
+                
+                if (now < expiresAt) {
+                    statusDiv.className = 'token-status token-valid';
+                    statusDiv.innerHTML = '✓ Signed in successfully<div class="token-info">Token expires: ' + new Date(expiresAt).toLocaleString() + '</div>';
+                    loginButton.textContent = 'Re-authenticate';
+                } else {
+                    statusDiv.className = 'token-status token-invalid';
+                    statusDiv.innerHTML = '⚠ Token expired - please sign in again';
+                    loginButton.textContent = 'Sign in with Microsoft';
+                }
+            } else {
+                statusDiv.className = 'token-status token-invalid';
+                statusDiv.innerHTML = '⚠ Not authenticated - please sign in';
+                loginButton.textContent = 'Sign in with Microsoft';
+            }
+            
+            statusDiv.style.display = 'block';
+        }
+        
+        function checkForOAuthCallback() {
+            // Check if we're being called back from OAuth
+            var params = new URLSearchParams(window.location.search);
+            var code = params.get('code');
+            var state = params.get('state');
+            var error = params.get('error');
+            
+            if (error) {
+                alert('Authentication failed: ' + (params.get('error_description') || error));
+                return;
+            }
+            
+            if (code && state) {
+                // This is an OAuth callback - exchange code for tokens
+                exchangeCodeForTokens(code, state);
+            }
+        }
+        
+        function exchangeCodeForTokens(code, state) {
+            // Validate state parameter
+            var storedState = localStorage.getItem('oauth_state');
+            var storedVerifier = localStorage.getItem('code_verifier');
+            
+            if (state !== storedState) {
+                alert('Security error: Invalid state parameter');
+                return;
+            }
+            
+            if (!storedVerifier) {
+                alert('Security error: Missing code verifier');
+                return;
+            }
+            
+            // Show loading state
+            var statusDiv = document.getElementById('authStatus');
+            statusDiv.className = 'token-status';
+            statusDiv.innerHTML = '⏳ Exchanging authorization code for tokens...';
+            statusDiv.style.display = 'block';
+            
+            // Exchange code for tokens
+            var tokenUrl = 'https://login.microsoftonline.com/${OAUTH_CONFIG.tenantId}/oauth2/v2.0/token';
+            var body = [
+                'client_id=' + encodeURIComponent('${OAUTH_CONFIG.clientId}'),
+                'scope=' + encodeURIComponent('${OAUTH_CONFIG.scope}'),
+                'code=' + encodeURIComponent(code),
+                'redirect_uri=' + encodeURIComponent('${OAUTH_CONFIG.redirectUri}'),
+                'grant_type=authorization_code',
+                'code_verifier=' + encodeURIComponent(storedVerifier)
+            ].join('&');
+            
+            var xhr = new XMLHttpRequest();
+            xhr.open('POST', tokenUrl);
+            xhr.setRequestHeader('Content-Type', 'application/x-www-form-urlencoded');
+            
+            xhr.onreadystatechange = function() {
+                if (xhr.readyState === 4) {
+                    if (xhr.status === 200) {
+                        try {
+                            var response = JSON.parse(xhr.responseText);
+                            console.log('Token exchange successful');
+                            
+                            // Store tokens in current settings
+                            currentSettings.graph = {
+                                accessToken: response.access_token,
+                                refreshToken: response.refresh_token,
+                                expiresIn: response.expires_in,
+                                tokenType: response.token_type,
+                                scope: response.scope,
+                                expiresAt: Date.now() + (response.expires_in * 1000)
+                            };
+                            
+                            // Clean up stored OAuth values
+                            localStorage.removeItem('oauth_state');
+                            localStorage.removeItem('code_verifier');
+                            
+                            updateAuthStatus();
+                            
+                        } catch (e) {
+                            console.log('Error parsing token response:', e);
+                            statusDiv.className = 'token-status token-invalid';
+                            statusDiv.innerHTML = '❌ Failed to parse token response';
+                        }
+                    } else {
+                        console.log('Token exchange failed:', xhr.responseText);
+                        statusDiv.className = 'token-status token-invalid';
+                        statusDiv.innerHTML = '❌ Authentication failed: HTTP ' + xhr.status;
+                    }
+                }
+            };
+            
+            xhr.send(body);
+        }
+        
+        function toggleManualAuth() {
+            var section = document.getElementById('manualAuthSection');
+            var isHidden = section.style.display === 'none';
+            section.style.display = isHidden ? 'block' : 'none';
+        }
+        
         function saveConfig() {
+            // Prepare settings object
             var settings = {
                 contacts: [],
-                graph: {
-                    accessToken: document.getElementById('accessToken').value
-                },
+                graph: currentSettings.graph || {},
                 targetEmail: document.getElementById('targetEmail').value
             };
             
+            // Check if manual token was entered
+            var manualToken = document.getElementById('accessToken').value.trim();
+            if (manualToken && (!settings.graph.accessToken || manualToken !== settings.graph.accessToken)) {
+                // User entered a manual token
+                settings.graph = {
+                    accessToken: manualToken,
+                    refreshToken: '', // Manual tokens don't have refresh tokens
+                    expiresAt: Date.now() + (3600 * 1000), // Assume 1 hour expiry
+                    tokenType: 'Bearer',
+                    scope: 'Manual'
+                };
+            }
+            
+            // Collect contacts
             for (var i = 1; i <= 3; i++) {
                 var name = document.getElementById('contact' + i + 'Name').value.trim();
                 var phone = document.getElementById('contact' + i + 'Phone').value.trim();
@@ -486,6 +826,15 @@ Pebble.addEventListener('showConfiguration', function() {
         function cancelConfig() {
             window.location = 'pebblejs://close#';
         }
+        
+        // Set up OAuth login button
+        document.addEventListener('DOMContentLoaded', function() {
+            document.getElementById('loginButton').addEventListener('click', function(e) {
+                e.preventDefault();
+                // Open OAuth URL in new window
+                window.open(OAUTH_CONFIG.authUrl, '_blank');
+            });
+        });
         
         // Load existing settings when page opens
         loadSettings();
