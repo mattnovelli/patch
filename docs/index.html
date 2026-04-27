@@ -7,22 +7,66 @@
       http-equiv="Cache-Control"
       content="no-cache, no-store, must-revalidate"
     />
-    <title>Patch OAuth Config</title>
+    <title>Patch Config</title>
     <style>
       :root {
-        --bg: #121a2c;
-        --card: #1a2338;
-        --card-border: #2c3752;
-        --text: #e8ecf7;
-        --muted: #acb9d6;
-        --accent: #4f84ff;
-        --accent-2: #3d69d4;
-        --ok-bg: #133122;
-        --ok-border: #24583b;
-        --ok-text: #b8efcd;
-        --warn-bg: #3f2a13;
-        --warn-border: #67451f;
-        --warn-text: #ffd8a8;
+        color-scheme: light;
+        --bg: #ffffff;
+        --card: #ffffff;
+        --card-border: #dce2ec;
+        --text: #1c2432;
+        --muted: #5d697a;
+        --accent: #2f6df6;
+        --accent-2: #2459cc;
+        --ok-bg: #eaf8ef;
+        --ok-border: #b8e2c4;
+        --ok-text: #1b5f3a;
+        --warn-bg: #fff4e8;
+        --warn-border: #f5d2a5;
+        --warn-text: #8e520c;
+        --label: #425168;
+        --input-bg: #ffffff;
+        --input-border: #bcc8d8;
+        --secondary-bg: #e8edf5;
+        --secondary-text: #1c2432;
+        --link: #2f6df6;
+        --link-hover: #204fb8;
+        --surface-soft: #f6f8fc;
+        --table-border: #dbe3ef;
+        --table-head-bg: #edf2fa;
+        --table-head-text: #405171;
+        --table-key-text: #2f3d55;
+      }
+
+      @media (prefers-color-scheme: dark) {
+        :root {
+          color-scheme: dark;
+          --bg: #121a2c;
+          --card: #1a2338;
+          --card-border: #2c3752;
+          --text: #e8ecf7;
+          --muted: #acb9d6;
+          --accent: #4f84ff;
+          --accent-2: #3d69d4;
+          --ok-bg: #133122;
+          --ok-border: #24583b;
+          --ok-text: #b8efcd;
+          --warn-bg: #3f2a13;
+          --warn-border: #67451f;
+          --warn-text: #ffd8a8;
+          --label: #d0dcf7;
+          --input-bg: #111a2f;
+          --input-border: #3a4666;
+          --secondary-bg: #394460;
+          --secondary-text: #ffffff;
+          --link: #8fb2ff;
+          --link-hover: #c6dcff;
+          --surface-soft: #111a2f;
+          --table-border: #2f3b57;
+          --table-head-bg: #18233d;
+          --table-head-text: #c7d6f8;
+          --table-key-text: #c8d7f7;
+        }
       }
 
       * {
@@ -38,7 +82,7 @@
           "Helvetica Neue",
           Arial,
           sans-serif;
-        padding: 18px;
+        padding: 10px 12px;
       }
 
       .wrap {
@@ -46,14 +90,14 @@
         margin: 0 auto;
         display: flex;
         flex-direction: column;
-        gap: 2em;
+        gap: 14px;
       }
 
       .card {
         background: var(--card);
         border: 1px solid var(--card-border);
         border-radius: 12px;
-        padding: 18px;
+        padding: 14px;
         box-shadow: none;
       }
 
@@ -92,14 +136,14 @@
         display: block;
         font-size: 12px;
         margin-bottom: 6px;
-        color: #d0dcf7;
+        color: var(--label);
       }
 
       input,
       select {
         width: 100%;
-        border: 1px solid #3a4666;
-        background: #111a2f;
+        border: 1px solid var(--input-border);
+        background: var(--input-bg);
         color: var(--text);
         border-radius: 8px;
         padding: 10px 12px;
@@ -156,13 +200,13 @@
 
       button.secondary,
       a.btn.secondary {
-        background: #394460;
-        color: #fff;
+        background: var(--secondary-bg);
+        color: var(--secondary-text);
       }
 
       button.link {
         background: transparent;
-        color: #8fb2ff;
+        color: var(--link);
         padding: 2px 0;
       }
 
@@ -190,17 +234,17 @@
       }
 
       .option-card {
-        border: 1px solid #3a4666;
+        border: 1px solid var(--input-border);
         border-radius: 8px;
         padding: 10px 12px;
-        background: #121d34;
+        background: var(--surface-soft);
       }
 
       .option-title {
         margin: 0;
         font-size: 14px;
         font-weight: 600;
-        color: #dce7ff;
+        color: var(--text);
       }
 
       .option-select {
@@ -226,11 +270,11 @@
       }
 
       .inline-link {
-        color: #9dc0ff;
+        color: var(--link);
       }
 
       .inline-link:hover {
-        color: #c6dcff;
+        color: var(--link-hover);
       }
 
       .contact-list {
@@ -242,16 +286,15 @@
 
       .contact-row {
         display: grid;
-        grid-template-columns: minmax(0, 0.8fr) minmax(0, 1fr) minmax(
-            0,
-            1fr
-          ) auto;
+        grid-template-columns:
+          minmax(0, 0.8fr) minmax(0, 1fr) minmax(0, 1fr)
+          auto;
         gap: 8px;
         align-items: end;
         padding: 10px;
-        border: 1px solid #364462;
+        border: 1px solid var(--table-border);
         border-radius: 8px;
-        background: #111a2f;
+        background: var(--surface-soft);
       }
 
       .contact-row .field {
@@ -283,10 +326,10 @@
       .shortcut-table-wrap {
         margin-top: 8px;
         max-width: 560px;
-        border: 1px solid #2f3b57;
+        border: 1px solid var(--table-border);
         border-radius: 6px;
         overflow: hidden;
-        background: #111a2f;
+        background: var(--surface-soft);
       }
 
       .shortcut-table {
@@ -299,25 +342,25 @@
         padding: 7px 10px;
         font-size: 12px;
         text-align: left;
-        border-bottom: 1px solid #28324b;
+        border-bottom: 1px solid var(--table-border);
       }
 
       .shortcut-table th {
         font-size: 10px;
         text-transform: uppercase;
         letter-spacing: 0.04em;
-        color: #c7d6f8;
-        background: #18233d;
+        color: var(--table-head-text);
+        background: var(--table-head-bg);
       }
 
       .shortcut-table td:first-child {
         width: 38%;
         font-weight: 500;
-        color: #c8d7f7;
+        color: var(--table-key-text);
       }
 
       .shortcut-table td:last-child {
-        color: #a6b8da;
+        color: var(--muted);
       }
 
       .shortcut-table tr:last-child td {
@@ -325,6 +368,14 @@
       }
 
       @media (max-width: 620px) {
+        body {
+          padding: 8px;
+        }
+
+        .card {
+          padding: 12px;
+        }
+
         .contact-row {
           grid-template-columns: 1fr;
         }
@@ -333,11 +384,24 @@
   </head>
   <body>
     <div class="wrap">
+      <h1
+        style="
+          display: flex;
+          flex-direction: row;
+          justify-content: center;
+          margin-top: 1em;
+        "
+      >
+        <img
+          style="max-width: 10em"
+          alt="Welcome to Patch"
+          src="img/patch-header.svg"
+        />
+      </h1>
       <div class="card">
-        <h1>Welcome to Patch</h1>
         <h2>
-          Patch uses the power of iOS Automations to send text messages from
-          your Pebble.
+          Harness the power of iOS Automations to send text messages from your
+          Pebble.
         </h2>
         <p>
           When you send a message, Patch sends an email to yourself with the
@@ -358,12 +422,19 @@
           class="section"
           style="margin-top: 0; padding-top: 0; border-top: 0"
         ></div>
-        <h2>Configuration</h2>
+        <h2>Setup</h2>
         <h3>Prerequisites</h3>
         <ol>
           <li>
-            A <a href="">Microsoft Outlook account</a>. Patch uses Outlook since
-            it's free and supports push notifications to the iOS Mail app.
+            A <a href="">Microsoft Outlook account</a> added to the native iOS
+            Mail App
+            <a
+              target="_blank"
+              rel="noopener noreferrer"
+              href="https://support.microsoft.com/en-us/office/set-up-an-outlook-account-on-the-ios-mail-app-7e5b180f-bc8f-45cc-8da1-5cefc1e633d1"
+              >(Guide)</a
+            >. Patch uses Outlook since it's free and supports push
+            notifications to iOS.
           </li>
           <li>
             <a href="">Shortcuts</a> installed on the iOS device you want to
@@ -371,63 +442,29 @@
           </li>
         </ol>
 
-        <h3>Automation Setup</h3>
+        <h3>Shortcuts Automation Setup</h3>
         <ol>
           <li>
-            Add your Outlook account to the native iOS Mail app
+            Install the
             <a
               target="_blank"
               rel="noopener noreferrer"
-              href="https://support.microsoft.com/en-us/office/set-up-an-outlook-account-on-the-ios-mail-app-7e5b180f-bc8f-45cc-8da1-5cefc1e633d1"
-              >(Guide)</a
+              href="https://www.icloud.com/shortcuts/4ad22257c6734c70b542fabafae46236"
+              >Patch iOS Shortcut</a
             >.
           </li>
           <li>
-            Install the Patch iOS Shortcut. You will be asked a few questions on
-            first time setup.
+            Navigate to the "Automations" tab. Create a new automation and
+            select "Email."
           </li>
-          <li>
-            Navigate to the automations tab. Create a new automation and select
-            "Email."
-          </li>
+
           <li>
             Configure the following:
             <div class="shortcut-table-wrap">
-              <table
-                class="shortcut-table"
-                aria-label="Patch shortcut automation settings"
-              >
-                <thead>
-                  <tr>
-                    <th>Automation Field</th>
-                    <th>Value</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  <tr>
-                    <td>Sender</td>
-                    <td>(Your Outlook Email)</td>
-                  </tr>
-                  <tr>
-                    <td>Subject Contains</td>
-                    <td><code>New Patch</code></td>
-                  </tr>
-                  <tr>
-                    <td>Account</td>
-                    <td>Outlook</td>
-                  </tr>
-                  <tr>
-                    <td>Recipient</td>
-                    <td>(Your Outlook Email)</td>
-                  </tr>
-                  <tr>
-                    <td>Run Immediately</td>
-                    <td>On</td>
-                  </tr>
-                </tbody>
-              </table>
+              <img style="max-width: 100%" src="img/automation-config.png" />
             </div>
           </li>
+          <li>Select the Patch Shortcut from your Shortcut library.</li>
         </ol>
 
         <div
@@ -857,11 +894,11 @@
             "</div>",
             '<div class="field">',
             "<label>Contact Name</label>",
-            '<input type="text" class="contact-name" placeholder="Alice" />',
+            '<input type="text" class="contact-name" placeholder="Eric" />',
             "</div>",
             '<div class="field">',
             "<label>Contact Phone</label>",
-            '<input type="tel" class="contact-phone" placeholder="+1234567890" />',
+            '<input type="tel" class="contact-phone" placeholder="2178675309" />',
             "</div>",
             '<button type="button" class="secondary remove-contact">Remove</button>',
           ].join("");
