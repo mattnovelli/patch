@@ -77,7 +77,6 @@ The application sends emails with a specific structure that the iOS Shortcut rec
 - Uses Microsoft Graph OAuth 2.0 authorization code grant flow
 - Uses PKCE from a hosted config page (GitHub Pages)
 - Supports automatic token refresh when tokens expire
-- Fallback to manual token input for development/testing
 - Tokens are securely managed with expiration tracking
 - Implements CSRF protection with state parameters
 
@@ -90,7 +89,6 @@ The application sends emails with a specific structure that the iOS Shortcut rec
    - OAuth authorization code grant flow
    - Automatic token refresh capability
    - Required scopes: `Mail.Send`, `offline_access`
-   - Fallback manual token input for development
 
 2. **Target Email Address**
    - Email address monitored by the iOS Shortcut

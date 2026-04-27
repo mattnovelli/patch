@@ -109,7 +109,7 @@ Notes:
 
 ## Testing
 
-1. Open Pebble app settings for Send Message.
+1. Open Pebble app settings for Patch.
 2. Verify config page opens from your GitHub Pages URL.
 3. Sign in with Microsoft.
 4. Save settings and verify contacts sync to watch.

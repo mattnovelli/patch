@@ -161,6 +161,99 @@ button.link {
 	font-size: 12px;
 	word-break: break-all;
 }
+
+.tutorial {
+	margin: 8px 0 0 18px;
+	padding: 0;
+	color: var(--muted);
+}
+
+.tutorial li {
+	margin: 4px 0;
+}
+
+.auth-options {
+	display: flex;
+	flex-direction: column;
+	gap: 12px;
+	margin-top: 10px;
+}
+
+.option-card {
+	border: 1px solid #3a4666;
+	border-radius: 8px;
+	padding: 10px 12px;
+	background: #121d34;
+}
+
+.option-title {
+	margin: 0;
+	font-size: 14px;
+	font-weight: 600;
+	color: #dce7ff;
+}
+
+.option-select {
+	display: flex;
+	align-items: flex-start;
+	gap: 10px;
+	cursor: pointer;
+	margin: 0;
+}
+
+.option-select input {
+	width: auto;
+	margin-top: 2px;
+	accent-color: var(--accent);
+}
+
+.option-content {
+	margin-top: 8px;
+}
+
+.option-actions {
+	margin-top: 10px;
+}
+
+.inline-link {
+	color: #9dc0ff;
+}
+
+.inline-link:hover {
+	color: #c6dcff;
+}
+
+.contact-list {
+	display: flex;
+	flex-direction: column;
+	gap: 10px;
+	margin-top: 10px;
+}
+
+.contact-row {
+	display: grid;
+	grid-template-columns: minmax(0, 1fr) minmax(0, 1fr) auto;
+	gap: 8px;
+	align-items: end;
+	padding: 10px;
+	border: 1px solid #364462;
+	border-radius: 8px;
+	background: #111a2f;
+}
+
+.contact-row .field {
+	margin: 0;
+}
+
+.contact-row button {
+	white-space: nowrap;
+}
+
+@media (max-width: 620px) {
+	.contact-row {
+		grid-template-columns: 1fr;
+	}
+}
 </style>
 </head>
 <body>
@@ -172,27 +265,34 @@ button.link {
 			<div class="section" style="margin-top:0;padding-top:0;border-top:0;">
 				<h2>Authentication</h2>
 				<div id="authStatus" class="status">Not signed in.</div>
+				<div class="help">Choose one sign-in option:</div>
 
-				<div class="row">
-					<label for="clientId">Microsoft Entra Client ID</label>
-					<input id="clientId" type="text" placeholder="xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx" />
-					<div class="help">Create an app registration and paste its Client ID here. Stored in browser localStorage on this hosted page.</div>
-				</div>
+				<div class="auth-options">
+					<div class="option-card">
+						<label class="option-select"><input id="authOptionShared" type="radio" name="authOption" value="shared" checked /> <span class="option-title">Option 1: Use the shared Entra client</span></label>
+						<div class="option-content">
+							<div class="help">This client is maintained by the project and intended for safe public use. Review the code: <a class="inline-link" href="https://github.com/mattnovelli/pebble-message" target="_blank" rel="noopener noreferrer">github.com/mattnovelli/pebble-message</a>.</div>
+							<div class="btn-row option-actions">
+								<button id="loginButton" class="primary" type="button">Sign in with Microsoft</button>
+								<a id="returnButton" class="btn secondary" href="#" style="display:none;">Return to Pebble</a>
+							</div>
+						</div>
+					</div>
 
-				<div class="btn-row">
-					<button id="loginButton" class="primary" type="button">Sign in with Microsoft</button>
-					<a id="returnButton" class="btn secondary" href="#" style="display:none;">Return to Pebble</a>
-				</div>
-
-				<div class="row" style="margin-top:12px;">
-					<button id="toggleManual" class="link" type="button">Use manual token (advanced)</button>
-				</div>
-
-				<div id="manualAuthSection" style="display:none;">
-					<div class="row">
-						<label for="accessToken">Access Token (Manual)</label>
-						<input id="accessToken" type="password" placeholder="Paste a Graph access token" />
-						<div class="help">Manual tokens are usually short-lived. OAuth sign-in is recommended.</div>
+					<div class="option-card">
+						<label class="option-select"><input id="authOptionCustom" type="radio" name="authOption" value="custom" /> <span class="option-title">Option 2: Set up your own Entra app</span></label>
+						<div id="customClientDetails" class="option-content" style="display:none;">
+							<div class="row">
+								<label for="clientId">Custom Microsoft Entra Client ID</label>
+								<input id="clientId" type="text" placeholder="xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx" />
+							</div>
+							<ol class="tutorial">
+								<li>Start from <a class="inline-link" href="https://github.com/mattnovelli/pebble-message" target="_blank" rel="noopener noreferrer">github.com/mattnovelli/pebble-message</a>.</li>
+								<li>Follow <a class="inline-link" href="https://github.com/mattnovelli/pebble-message/blob/main/myfirstproject/OAUTH_SETUP.md" target="_blank" rel="noopener noreferrer">myfirstproject/OAUTH_SETUP.md</a>.</li>
+								<li>Publish your own copy of <a class="inline-link" href="https://github.com/mattnovelli/pebble-message/blob/main/docs/index.html" target="_blank" rel="noopener noreferrer">docs/index.html</a> and add that URL as a SPA redirect URI.</li>
+								<li>Grant <span class="mono">Mail.Send</span> and <span class="mono">offline_access</span>, enable public client flows, then paste your Client ID.</li>
+							</ol>
+						</div>
 					</div>
 				</div>
 
@@ -209,32 +309,12 @@ button.link {
 			</div>
 
 			<div class="section">
-				<h2>Contacts (up to 3)</h2>
-				<div class="row">
-					<label for="contact1Name">Contact 1 Name</label>
-					<input id="contact1Name" type="text" placeholder="Alice" />
-				</div>
-				<div class="row">
-					<label for="contact1Phone">Contact 1 Phone</label>
-					<input id="contact1Phone" type="tel" placeholder="+1234567890" />
-				</div>
-
-				<div class="row">
-					<label for="contact2Name">Contact 2 Name</label>
-					<input id="contact2Name" type="text" placeholder="Bob" />
-				</div>
-				<div class="row">
-					<label for="contact2Phone">Contact 2 Phone</label>
-					<input id="contact2Phone" type="tel" placeholder="+1234567891" />
-				</div>
-
-				<div class="row">
-					<label for="contact3Name">Contact 3 Name</label>
-					<input id="contact3Name" type="text" placeholder="Charlie" />
-				</div>
-				<div class="row">
-					<label for="contact3Phone">Contact 3 Phone</label>
-					<input id="contact3Phone" type="tel" placeholder="+1234567892" />
+				<h2>Contacts</h2>
+				<div class="help">Add as many contacts as you want. Only entries with both a name and phone are saved.</div>
+				<div id="contactsList" class="contact-list"></div>
+				<div id="contactsEmpty" class="help">No contacts yet. Add one to get started.</div>
+				<div class="btn-row" style="margin-top:10px;">
+					<button id="addContactButton" class="secondary" type="button">Add Contact</button>
 				</div>
 			</div>
 
@@ -247,14 +327,16 @@ button.link {
 
 <script>
 (function() {
-	var DEFAULT_CLIENT_ID = '';
+	var PROVIDED_CLIENT_ID = 'b9260194-8028-48ae-8907-e30182eda409';
+	var DEFAULT_CLIENT_ID = PROVIDED_CLIENT_ID;
 	var DEFAULT_TENANT = 'common';
 	var DEFAULT_SCOPE = 'https://graph.microsoft.com/Mail.Send offline_access';
 
 	var SESSION_DRAFT_KEY = 'send_message_settings_draft';
 	var SESSION_VERIFIER_KEY = 'send_message_pkce_verifier';
 	var SESSION_STATE_KEY = 'send_message_oauth_state';
-	var LOCAL_CLIENT_ID_KEY = 'send_message_client_id';
+	var LEGACY_CLIENT_ID_KEY = 'send_message_client_id';
+	var LOCAL_CUSTOM_CLIENT_ID_KEY = 'send_message_custom_client_id';
 
 	var currentSettings = {
 		contacts: [],
@@ -280,7 +362,18 @@ button.link {
 		return window.location.origin + window.location.pathname;
 	}
 
+	function isUsingCustomClient() {
+		return document.getElementById('authOptionCustom').checked;
+	}
+
+	function updateCustomClientRow() {
+		document.getElementById('customClientDetails').style.display = isUsingCustomClient() ? 'block' : 'none';
+	}
+
 	function getClientId() {
+		if (!isUsingCustomClient()) {
+			return PROVIDED_CLIENT_ID;
+		}
 		return document.getElementById('clientId').value.trim();
 	}
 
@@ -290,6 +383,52 @@ button.link {
 
 	function getScope() {
 		return (getParam('scope') || DEFAULT_SCOPE).trim();
+	}
+
+	function updateContactsEmptyHint() {
+		var list = document.getElementById('contactsList');
+		var hint = document.getElementById('contactsEmpty');
+		if (!list || !hint) {
+			return;
+		}
+		hint.style.display = list.children.length > 0 ? 'none' : 'block';
+	}
+
+	function createContactRow(contact) {
+		var row = document.createElement('div');
+		row.className = 'contact-row';
+		row.innerHTML = [
+			'<div class="field">',
+			'<label>Contact Name</label>',
+			'<input type="text" class="contact-name" placeholder="Alice" />',
+			'</div>',
+			'<div class="field">',
+			'<label>Contact Phone</label>',
+			'<input type="tel" class="contact-phone" placeholder="+1234567890" />',
+			'</div>',
+			'<button type="button" class="secondary remove-contact">Remove</button>'
+		].join('');
+
+		row.querySelector('.contact-name').value = (contact && contact.name) ? contact.name : '';
+		row.querySelector('.contact-phone').value = (contact && contact.phone) ? contact.phone : '';
+
+		row.querySelector('.remove-contact').addEventListener('click', function() {
+			if (row.parentNode) {
+				row.parentNode.removeChild(row);
+			}
+			updateContactsEmptyHint();
+		});
+
+		return row;
+	}
+
+	function addContactRow(contact) {
+		var list = document.getElementById('contactsList');
+		if (!list) {
+			return;
+		}
+		list.appendChild(createContactRow(contact || {}));
+		updateContactsEmptyHint();
 	}
 
 	function randomString(length) {
@@ -368,19 +507,37 @@ button.link {
 		document.getElementById('targetEmail').value = currentSettings.targetEmail || '';
 
 		var contacts = currentSettings.contacts || [];
-		for (var i = 0; i < 3; i++) {
-			var c = contacts[i] || {};
-			document.getElementById('contact' + (i + 1) + 'Name').value = c.name || '';
-			document.getElementById('contact' + (i + 1) + 'Phone').value = c.phone || '';
+
+		var contactsList = document.getElementById('contactsList');
+		if (contactsList) {
+			contactsList.innerHTML = '';
+			if (contacts.length === 0) {
+				addContactRow({});
+			} else {
+				for (var i = 0; i < contacts.length; i++) {
+					addContactRow(contacts[i]);
+				}
+			}
 		}
 
 		var queryClientId = getParam('client_id');
-		var savedClientId = localStorage.getItem(LOCAL_CLIENT_ID_KEY) || '';
-		var clientId = queryClientId || savedClientId || DEFAULT_CLIENT_ID;
-		document.getElementById('clientId').value = clientId;
+		var savedCustomClientId = localStorage.getItem(LOCAL_CUSTOM_CLIENT_ID_KEY) || localStorage.getItem(LEGACY_CLIENT_ID_KEY) || '';
+		var customClientId = '';
 
-		if (clientId) {
-			localStorage.setItem(LOCAL_CLIENT_ID_KEY, clientId);
+		if (queryClientId && queryClientId !== PROVIDED_CLIENT_ID) {
+			customClientId = queryClientId;
+		} else if (savedCustomClientId && savedCustomClientId !== PROVIDED_CLIENT_ID) {
+			customClientId = savedCustomClientId;
+		}
+
+		document.getElementById('clientId').value = customClientId;
+		document.getElementById('authOptionCustom').checked = !!customClientId;
+		document.getElementById('authOptionShared').checked = !customClientId;
+		updateCustomClientRow();
+
+		if (customClientId) {
+			localStorage.setItem(LOCAL_CUSTOM_CLIENT_ID_KEY, customClientId);
+			localStorage.removeItem(LEGACY_CLIENT_ID_KEY);
 		}
 	}
 
@@ -391,24 +548,15 @@ button.link {
 			targetEmail: document.getElementById('targetEmail').value.trim()
 		};
 
-		for (var i = 1; i <= 3; i++) {
-			var name = document.getElementById('contact' + i + 'Name').value.trim();
-			var phone = document.getElementById('contact' + i + 'Phone').value.trim();
+		var rows = document.querySelectorAll('#contactsList .contact-row');
+		for (var i = 0; i < rows.length; i++) {
+			var nameInput = rows[i].querySelector('.contact-name');
+			var phoneInput = rows[i].querySelector('.contact-phone');
+			var name = nameInput ? nameInput.value.trim() : '';
+			var phone = phoneInput ? phoneInput.value.trim() : '';
 			if (name && phone) {
 				settings.contacts.push({ name: name, phone: phone });
 			}
-		}
-
-		var manualToken = document.getElementById('accessToken').value.trim();
-		if (manualToken) {
-			settings.graph = {
-				accessToken: manualToken,
-				refreshToken: '',
-				expiresIn: 3600,
-				tokenType: 'Bearer',
-				scope: 'Manual',
-				expiresAt: Date.now() + (3600 * 1000)
-			};
 		}
 
 		currentSettings = settings;
@@ -529,12 +677,15 @@ button.link {
 
 	function beginLogin() {
 		var clientId = getClientId();
-		if (!clientId || clientId === 'YOUR_ENTRA_APP_CLIENT_ID_HERE') {
-			setAuthStatus('Set a valid Client ID before signing in.', false);
+		if (isUsingCustomClient() && !clientId) {
+			setAuthStatus('Enter your custom Client ID or choose Option 1.', false);
 			return;
 		}
 
-		localStorage.setItem(LOCAL_CLIENT_ID_KEY, clientId);
+		if (isUsingCustomClient() && clientId) {
+			localStorage.setItem(LOCAL_CUSTOM_CLIENT_ID_KEY, clientId);
+			localStorage.removeItem(LEGACY_CLIENT_ID_KEY);
+		}
 
 		readFormIntoSettings();
 		sessionStorage.setItem(SESSION_DRAFT_KEY, JSON.stringify(currentSettings));
@@ -580,16 +731,27 @@ button.link {
 	function initUI() {
 		document.getElementById('receiverInfo').textContent = 'Redirect URI (configure this exact value in Azure): ' + receiverUri();
 
+		document.getElementById('addContactButton').addEventListener('click', function() {
+			addContactRow({});
+		});
+
+		document.getElementById('authOptionShared').addEventListener('change', updateCustomClientRow);
+		document.getElementById('authOptionCustom').addEventListener('change', updateCustomClientRow);
+
+		document.getElementById('clientId').addEventListener('focus', function() {
+			document.getElementById('authOptionCustom').checked = true;
+			updateCustomClientRow();
+		});
+
 		document.getElementById('clientId').addEventListener('change', function() {
 			var value = this.value.trim();
 			if (value) {
-				localStorage.setItem(LOCAL_CLIENT_ID_KEY, value);
+				localStorage.setItem(LOCAL_CUSTOM_CLIENT_ID_KEY, value);
+				localStorage.removeItem(LEGACY_CLIENT_ID_KEY);
+			} else {
+				localStorage.removeItem(LOCAL_CUSTOM_CLIENT_ID_KEY);
+				localStorage.removeItem(LEGACY_CLIENT_ID_KEY);
 			}
-		});
-
-		document.getElementById('toggleManual').addEventListener('click', function() {
-			var section = document.getElementById('manualAuthSection');
-			section.style.display = section.style.display === 'none' ? 'block' : 'none';
 		});
 
 		document.getElementById('loginButton').addEventListener('click', beginLogin);
