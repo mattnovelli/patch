@@ -1,4 +1,4 @@
-# Patch
+![Patch](docs\img\patch-header.svg)
 
 ## Voice-to-Text Messaging for iOS
 
@@ -6,7 +6,7 @@ Patch harnesses the power of iOS automation to send text messages from your Pebb
 
 Patch requires the Apple Shortcuts app and a Microsoft Outlook account (yes, you read that right!). Since Outlook supports push notifications, and shortcuts supports sending text messages when an email comes in, we can combine the two to create a text-sending workflow!
 
-The whole process takes less than ten seconds and requires no
+The whole process takes less than 15 seconds and requires no
 intervention after you hit send on the Pebble.
 
 Patch signs in to Microsoft using a Microsoft Entra ID App Registration (formerly Azure Active Directory app registration). In practice, this is the OAuth app identity that tells Microsoft which app is requesting permission to send mail on your behalf via Microsoft Graph.
