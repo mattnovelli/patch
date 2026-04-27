@@ -9,6 +9,7 @@ var KEY_VOICE_TEXT = 1;
 var KEY_ERROR = 2;
 var KEY_STATUS = 3;
 var KEY_CONTACT_NAMES = 4;
+var KEY_QUIT_AFTER_SEND = 5;
 
 // Register appmessage handler IMMEDIATELY
 console.log('=== REGISTERING APPMESSAGE HANDLER ===');
@@ -249,16 +250,20 @@ function handleEmailError(err, contact) {
 // Settings functions
 function getSettings() {
   try {
-    return JSON.parse(localStorage.getItem('settings')) || { 
+    var parsed = JSON.parse(localStorage.getItem('settings')) || { 
       contacts: [], 
       graph: { accessToken: '' }, 
-      targetEmail: '' 
+      targetEmail: '',
+      quitAfterSend: false
     };
+    parsed.quitAfterSend = !!parsed.quitAfterSend;
+    return parsed;
   } catch (e) {
     return { 
       contacts: [], 
       graph: { accessToken: '' }, 
-      targetEmail: '' 
+      targetEmail: '',
+      quitAfterSend: false
     };
   }
 }
@@ -283,6 +288,7 @@ function sendContactsToWatch() {
   console.log('Sending contacts to watch: "' + names + '"');
   var msg = {};
   msg[KEY_CONTACT_NAMES] = names;
+  msg[KEY_QUIT_AFTER_SEND] = s.quitAfterSend ? 1 : 0;
   Pebble.sendAppMessage(msg, 
     function() {
       console.log('Contacts sent successfully');
@@ -465,6 +471,7 @@ Pebble.addEventListener('webviewclosed', function(e) {
   if (e.response) {
     try {
       var newSettings = JSON.parse(decodeURIComponent(e.response));
+      newSettings.quitAfterSend = !!newSettings.quitAfterSend;
       console.log('New settings: ' + JSON.stringify(newSettings));
       setSettings(newSettings);
       sendContactsToWatch();

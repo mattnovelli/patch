@@ -45,7 +45,8 @@
       "KEY_VOICE_TEXT", 
       "KEY_ERROR",
       "KEY_STATUS",
-      "KEY_CONTACT_NAMES"
+      "KEY_CONTACT_NAMES",
+      "KEY_QUIT_AFTER_SEND"
     ],
     "resources": {
       "media": [

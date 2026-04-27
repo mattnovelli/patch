@@ -6,6 +6,7 @@
 #define KEY_ERROR         2
 #define KEY_STATUS        3
 #define KEY_CONTACT_NAMES 4
+#define KEY_QUIT_AFTER_SEND 5
 
 #define SENT_STATUS_PREFIX "Email sent"
 #define SENT_ANIM_DELTA_MS 33
@@ -19,6 +20,8 @@ static Layer *s_empty_state_layer;
 static char **s_contacts = NULL;
 static int s_contact_count = 0;
 static bool s_contacts_loaded = false;
+static bool s_quit_after_send_enabled = false;
+static bool s_pending_quit_after_send = false;
 
 static DictationSession *s_dictation;
 static int s_selected_index = -1;
@@ -121,6 +124,15 @@ static void empty_state_layer_update_proc(Layer *layer, GContext *ctx) {
                      NULL);
 }
 
+static void maybe_quit_after_send(void) {
+  if (!s_pending_quit_after_send) {
+    return;
+  }
+
+  s_pending_quit_after_send = false;
+  window_stack_pop_all(false);
+}
+
 #ifdef PBL_COLOR
 static void sent_animation_timer_cb(void *context);
 static void sent_animation_hide_cb(void *context);
@@ -144,6 +156,7 @@ static void sent_animation_layer_update_proc(Layer *layer, GContext *ctx) {
 
 static void start_sent_animation(void) {
   if (!s_sent_sequence || !s_sent_anim_layer) {
+    maybe_quit_after_send();
     return;
   }
 
@@ -160,6 +173,7 @@ static void start_sent_animation(void) {
   const int num_frames = gdraw_command_sequence_get_num_frames(s_sent_sequence);
   if (num_frames <= 0) {
     APP_LOG(APP_LOG_LEVEL_ERROR, "Sent sequence has no frames");
+    maybe_quit_after_send();
     return;
   }
 
@@ -190,6 +204,7 @@ static void sent_animation_timer_cb(void *context) {
     s_sent_animating = false;
     s_sent_anim_timer = NULL;
     layer_set_hidden(s_sent_anim_layer, true);
+    maybe_quit_after_send();
     return;
   }
 
@@ -217,9 +232,11 @@ static void sent_animation_hide_cb(void *context) {
 
   layer_set_hidden(s_sent_anim_layer, true);
   s_sent_anim_frame = 0;
+  maybe_quit_after_send();
 }
 #else
 static void start_sent_animation(void) {
+  maybe_quit_after_send();
 }
 #endif
 
@@ -350,6 +367,12 @@ static void menu_select_click(MenuLayer *menu_layer, MenuIndex *index, void *con
 static void inbox_received(DictionaryIterator *iter, void *context) {
   (void)context;
 
+  Tuple *quit_after_send_t = dict_find(iter, KEY_QUIT_AFTER_SEND);
+  if (quit_after_send_t) {
+    s_quit_after_send_enabled = quit_after_send_t->value->int32 != 0;
+    APP_LOG(APP_LOG_LEVEL_INFO, "Quit after send: %s", s_quit_after_send_enabled ? "enabled" : "disabled");
+  }
+
   Tuple *names = dict_find(iter, KEY_CONTACT_NAMES);
   if (names) {
     parse_contacts_string(names->value->cstring);
@@ -362,12 +385,14 @@ static void inbox_received(DictionaryIterator *iter, void *context) {
 
     if (status_text && strstr(status_text, SENT_STATUS_PREFIX)) {
       vibes_short_pulse();
+      s_pending_quit_after_send = s_quit_after_send_enabled;
       start_sent_animation();
     }
   }
 
   Tuple *error_t = dict_find(iter, KEY_ERROR);
   if (error_t) {
+    s_pending_quit_after_send = false;
     APP_LOG(APP_LOG_LEVEL_ERROR, "Error: %s", error_t->value->cstring);
     vibes_long_pulse();
   }
