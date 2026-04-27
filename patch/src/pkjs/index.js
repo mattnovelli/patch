@@ -16,18 +16,85 @@ var AUTH_STATE_UNKNOWN = 0;
 var AUTH_STATE_OK = 1;
 var AUTH_STATE_REAUTH_REQUIRED = 2;
 
-var CONTACT_EMOJI_DEFAULT_CODE = '1F4AC';
+var CONTACT_EMOJI_DEFAULT_CODE = '1F603';
 var CONTACT_EMOJI_ALLOWED_CODES = [
-  '1F4AC', // Speech balloon
-  '1F4DE', // Phone
-  '1F4F1', // Mobile phone
-  '2709',  // Envelope
-  '1F603', // Smiley
-  '1F389', // Celebration
-  '1F44D', // Thumbs up
-  '2764',  // Heart
-  '1F4E2', // Loudspeaker
-  '1F512'  // Lock
+  '1F601',
+  '1F602',
+  '1F603',
+  '1F604',
+  '1F605',
+  '1F606',
+  '1F609',
+  '1F60A',
+  '1F60B',
+  '1F60C',
+  '1F60D',
+  '1F60F',
+  '1F612',
+  '1F613',
+  '1F614',
+  '1F616',
+  '1F618',
+  '1F61A',
+  '1F61C',
+  '263A',
+  '1F607',
+  '1F608',
+  '1F60E',
+  '1F610',
+  '1F611',
+  '1F615',
+  '1F617',
+  '1F619',
+  '1F61B',
+  '1F61F',
+  '1F626',
+  '1F627',
+  '1F62C',
+  '1F62E',
+  '1F62F',
+  '1F634',
+  '1F636',
+  '1F425',
+  '2764',
+  '1F493',
+  '1F61D',
+  '1F61E',
+  '1F620',
+  '1F621',
+  '1F622',
+  '1F623',
+  '1F624',
+  '1F625',
+  '1F628',
+  '1F629',
+  '1F62A',
+  '1F62B',
+  '1F62D',
+  '1F630',
+  '1F631',
+  '1F632',
+  '1F633',
+  '1F635',
+  '1F637',
+  '1F600',
+  '1F494',
+  '1F495',
+  '1F496',
+  '1F497',
+  '1F498',
+  '1F49D',
+  '1F49E',
+  '1F49F',
+  '1F37A',
+  '1F37B',
+  '1F389',
+  '270B',
+  '270C',
+  '1F44D',
+  '1F44E',
+  '1F64F',
+  '1F4A9'
 ];
 var CONTACT_EMOJI_LOOKUP = {};
 

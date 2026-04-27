@@ -242,7 +242,10 @@
 
       .contact-row {
         display: grid;
-        grid-template-columns: minmax(0, 0.8fr) minmax(0, 1fr) minmax(0, 1fr) auto;
+        grid-template-columns: minmax(0, 0.8fr) minmax(0, 1fr) minmax(
+            0,
+            1fr
+          ) auto;
         gap: 8px;
         align-items: end;
         padding: 10px;
@@ -609,27 +612,94 @@
         var CLIENT_ID_PLACEHOLDER = "YOUR_ENTRA_APP_CLIENT_ID_HERE";
         var CLIENT_ID_REGEX =
           /^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$/;
-        var CONTACT_EMOJI_DEFAULT = "1F4AC";
-        var CONTACT_EMOJI_CHOICES = [
-          { code: "", label: "Default" },
-          { code: "1F4AC", label: "Speech" },
-          { code: "1F4DE", label: "Phone" },
-          { code: "1F4F1", label: "Mobile" },
-          { code: "2709", label: "Mail" },
-          { code: "1F603", label: "Smile" },
-          { code: "1F389", label: "Celebrate" },
-          { code: "1F44D", label: "Thumbs Up" },
-          { code: "2764", label: "Heart" },
-          { code: "1F4E2", label: "Megaphone" },
-          { code: "1F512", label: "Lock" },
+        var CONTACT_EMOJI_DEFAULT = "1F603";
+        var CONTACT_EMOJI_CODES = [
+          "1F601",
+          "1F602",
+          "1F603",
+          "1F604",
+          "1F605",
+          "1F606",
+          "1F609",
+          "1F60A",
+          "1F60B",
+          "1F60C",
+          "1F60D",
+          "1F60F",
+          "1F612",
+          "1F613",
+          "1F614",
+          "1F616",
+          "1F618",
+          "1F61A",
+          "1F61C",
+          "263A",
+          "1F607",
+          "1F608",
+          "1F60E",
+          "1F610",
+          "1F611",
+          "1F615",
+          "1F617",
+          "1F619",
+          "1F61B",
+          "1F61F",
+          "1F626",
+          "1F627",
+          "1F62C",
+          "1F62E",
+          "1F62F",
+          "1F634",
+          "1F636",
+          "1F425",
+          "2764",
+          "1F493",
+          "1F61D",
+          "1F61E",
+          "1F620",
+          "1F621",
+          "1F622",
+          "1F623",
+          "1F624",
+          "1F625",
+          "1F628",
+          "1F629",
+          "1F62A",
+          "1F62B",
+          "1F62D",
+          "1F630",
+          "1F631",
+          "1F632",
+          "1F633",
+          "1F635",
+          "1F637",
+          "1F600",
+          "1F494",
+          "1F495",
+          "1F496",
+          "1F497",
+          "1F498",
+          "1F49D",
+          "1F49E",
+          "1F49F",
+          "1F37A",
+          "1F37B",
+          "1F389",
+          "270B",
+          "270C",
+          "1F44D",
+          "1F44E",
+          "1F64F",
+          "1F4A9",
         ];
         var CONTACT_EMOJI_LOOKUP = {};
 
-        for (var emojiIdx = 0; emojiIdx < CONTACT_EMOJI_CHOICES.length; emojiIdx++) {
-          var emojiCode = CONTACT_EMOJI_CHOICES[emojiIdx].code;
-          if (emojiCode) {
-            CONTACT_EMOJI_LOOKUP[emojiCode] = true;
-          }
+        for (
+          var emojiIdx = 0;
+          emojiIdx < CONTACT_EMOJI_CODES.length;
+          emojiIdx++
+        ) {
+          CONTACT_EMOJI_LOOKUP[CONTACT_EMOJI_CODES[emojiIdx]] = true;
         }
 
         var currentSettings = {
@@ -715,7 +785,9 @@
         }
 
         function normalizeEmojiCodepoint(code) {
-          var v = String(code || "").trim().toUpperCase();
+          var v = String(code || "")
+            .trim()
+            .toUpperCase();
           if (!v) {
             return "";
           }
@@ -745,15 +817,23 @@
           }
 
           select.innerHTML = "";
-          for (var i = 0; i < CONTACT_EMOJI_CHOICES.length; i++) {
-            var optionData = CONTACT_EMOJI_CHOICES[i];
-            var option = document.createElement("option");
-            option.value = optionData.code;
+          var defaultOption = document.createElement("option");
+          defaultOption.value = "";
+          defaultOption.textContent =
+            emojiFromCodepoint(CONTACT_EMOJI_DEFAULT) + " Default";
+          select.appendChild(defaultOption);
 
-            var prefix = optionData.code
-              ? emojiFromCodepoint(optionData.code) + " "
-              : emojiFromCodepoint(CONTACT_EMOJI_DEFAULT) + " ";
-            option.textContent = prefix + optionData.label;
+          for (var i = 0; i < CONTACT_EMOJI_CODES.length; i++) {
+            var code = CONTACT_EMOJI_CODES[i];
+            if (code === CONTACT_EMOJI_DEFAULT) {
+              continue;
+            }
+
+            var option = document.createElement("option");
+            option.value = code;
+
+            var glyph = emojiFromCodepoint(code);
+            option.textContent = (glyph ? glyph + " " : "") + "U+" + code;
             select.appendChild(option);
           }
         }
@@ -965,7 +1045,11 @@
             var name = nameInput ? nameInput.value.trim() : "";
             var phone = phoneInput ? phoneInput.value.trim() : "";
             if (name && phone) {
-              settings.contacts.push({ name: name, phone: phone, emoji: emoji });
+              settings.contacts.push({
+                name: name,
+                phone: phone,
+                emoji: emoji,
+              });
             }
           }
 
