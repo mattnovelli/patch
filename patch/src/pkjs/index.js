@@ -172,6 +172,7 @@ function handleAppMessage(e) {
   }
 
   var contact = s.contacts[index];
+  var outgoingMessageText = formatOutgoingMessageText(text, s);
   console.log('Sending message for contact: ' + contact.name + ' (' + contact.phone + ')');
 
   // Send status update to watch
@@ -194,18 +195,29 @@ function handleAppMessage(e) {
     }
 
     console.log('Token validated successfully, proceeding with email send');
-    sendEmailWithToken(accessToken, contact, text, s.targetEmail);
+    sendEmailWithToken(accessToken, contact, outgoingMessageText, s.targetEmail);
   });
+}
+
+function formatOutgoingMessageText(messageText, settings) {
+  var text = String(messageText || '');
+  if (!settings || !settings.allLowercase) {
+    return text;
+  }
+
+  return text.toLowerCase();
 }
 
 // Separate function to handle the actual email sending
 function sendEmailWithToken(accessToken, contact, messageText, targetEmail) {
   console.log('Sending email with validated token...');
   
-  // Create the JSON object for SMS processing
+  // Create the JSON object for iOS Shortcut processing.
+  // `recipient` carries the raw configured destination (phone or email string).
   var messageData = {
-    recipient: contact.name,
-    message: messageText
+    message: messageText,
+    recipient: String(contact.phone || '').trim(),
+    name: String(contact.name || '').trim()
   };
 
   var emailBody = JSON.stringify(messageData);
@@ -423,19 +435,22 @@ function getSettings() {
       contacts: [], 
       graph: { accessToken: '' }, 
       targetEmail: '',
-      quitAfterSend: false
+      quitAfterSend: false,
+      allLowercase: false
     };
 
     parsed.contacts = normalizeContacts(parsed.contacts);
     parsed.graph = parsed.graph || { accessToken: '' };
     parsed.quitAfterSend = !!parsed.quitAfterSend;
+    parsed.allLowercase = !!parsed.allLowercase;
     return parsed;
   } catch (e) {
     return { 
       contacts: [], 
       graph: { accessToken: '' }, 
       targetEmail: '',
-      quitAfterSend: false
+      quitAfterSend: false,
+      allLowercase: false
     };
   }
 }
@@ -446,6 +461,7 @@ function setSettings(s) {
   normalized.contacts = normalizeContacts(normalized.contacts);
   normalized.graph = normalized.graph || { accessToken: '' };
   normalized.quitAfterSend = !!normalized.quitAfterSend;
+  normalized.allLowercase = !!normalized.allLowercase;
   localStorage.setItem('settings', JSON.stringify(normalized));
 }
 
@@ -932,6 +948,7 @@ Pebble.addEventListener('webviewclosed', function(e) {
     try {
       var newSettings = JSON.parse(decodeURIComponent(e.response));
       newSettings.quitAfterSend = !!newSettings.quitAfterSend;
+      newSettings.allLowercase = !!newSettings.allLowercase;
       console.log('New settings: ' + JSON.stringify(newSettings));
       setSettings(newSettings);
       sendContactsToWatch();

@@ -460,7 +460,7 @@
             <a
               target="_blank"
               rel="noopener noreferrer"
-              href="https://www.icloud.com/shortcuts/4ad22257c6734c70b542fabafae46236"
+              href="https://www.icloud.com/shortcuts/10fcb2c6db7c435292cde5d9cd3e6409"
               >Patch iOS Shortcut</a
             >.
           </li>
@@ -476,12 +476,6 @@
             </div>
           </li>
           <li>Select the Patch Shortcut from your Shortcut library.</li>
-          <li>
-            To prevent texting the wrong person, patch will only send messages
-            to contacts on your device that contain the speech bubble emoji (💬)
-            in their contact notes. Be sure to add the emoji to the notes of to
-            any contacts you add below.
-          </li>
         </ol>
 
         <div
@@ -625,6 +619,12 @@
             <input id="quitAfterSend" type="checkbox" />
             <label for="quitAfterSend">Quit app after a message is sent </label>
           </div>
+          <div class="toggle-row">
+            <input id="allLowercase" type="checkbox" />
+            <label for="allLowercase">
+              Send dictated messages in all lowercase
+            </label>
+          </div>
         </div>
 
         <div class="section">
@@ -761,6 +761,7 @@
           graph: {},
           targetEmail: "",
           quitAfterSend: false,
+          allLowercase: false,
         };
 
         function getParam(name) {
@@ -1025,6 +1026,7 @@
           currentSettings.graph = obj.graph || {};
           currentSettings.targetEmail = obj.targetEmail || "";
           currentSettings.quitAfterSend = !!obj.quitAfterSend;
+          currentSettings.allLowercase = !!obj.allLowercase;
         }
 
         function loadSettings() {
@@ -1044,6 +1046,8 @@
             currentSettings.targetEmail || "";
           document.getElementById("quitAfterSend").checked =
             !!currentSettings.quitAfterSend;
+          document.getElementById("allLowercase").checked =
+            !!currentSettings.allLowercase;
 
           var contacts = currentSettings.contacts || [];
 
@@ -1094,6 +1098,7 @@
             graph: currentSettings.graph || {},
             targetEmail: document.getElementById("targetEmail").value.trim(),
             quitAfterSend: document.getElementById("quitAfterSend").checked,
+            allLowercase: document.getElementById("allLowercase").checked,
           };
 
           var rows = document.querySelectorAll("#contactsList .contact-row");

@@ -61,8 +61,9 @@ The application sends emails with a specific structure that the iOS Shortcut rec
 
 ```json
 {
-  "recipient": "Contact Name",
-  "message": "Transcribed voice message text"
+  "message": "Transcribed voice message text",
+  "recipient": "+15551234567 or person@example.com",
+  "name": "Contact Name"
 }
 ```
 
