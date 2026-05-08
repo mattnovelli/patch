@@ -113,9 +113,77 @@ var TOKEN_REFRESH_TIMEOUT_MS = 15 * 1000;
 var TOKEN_REFRESH_MAX_ATTEMPTS = 3;
 var TOKEN_REFRESH_BASE_RETRY_MS = 1200;
 var DEBUG_HEARTBEAT_STORAGE_KEY = 'patch_pkjs_debug_heartbeat';
+// Toggle on for emulator/app-store screenshots to bypass real auth/config.
+var DEMO_MODE_ENABLED = false;
+var DEMO_MODE_STORAGE_KEY = 'patch_demo_mode';
+var DEMO_TARGET_EMAIL = 'demo@outlook.com';
+var DEMO_CONTACTS = [
+  { name: 'Alex Chen', phone: '5550101', emoji: '1F60E' },
+  { name: 'Sam Rivera', phone: '5550134', emoji: '1F44D' },
+  { name: 'Jamie Park', phone: '5550177', emoji: '1F389' },
+  { name: 'Taylor Reed', phone: '5550199', emoji: '1F64F' }
+];
+var DEMO_CANNED_MESSAGES = [
+  'On my way',
+  'Running 10 minutes late',
+  'Can\'t talk right now',
+  'Call you in 5',
+  'Here now',
+  'Thanks!'
+];
 
 var s_refreshInFlight = false;
 var s_refreshWaiters = [];
+
+function isDemoModeEnabled() {
+  if (DEMO_MODE_ENABLED) {
+    return true;
+  }
+
+  var raw = '';
+  try {
+    raw = String(localStorage.getItem(DEMO_MODE_STORAGE_KEY) || '').trim().toLowerCase();
+  } catch (e) {
+    return false;
+  }
+
+  return raw === '1' || raw === 'true' || raw === 'on';
+}
+
+function buildDemoSettings() {
+  var expiresAt = Date.now() + (24 * 60 * 60 * 1000);
+
+  return {
+    contacts: normalizeContacts(DEMO_CONTACTS),
+    cannedMessages: normalizeCannedMessages(DEMO_CANNED_MESSAGES),
+    graph: normalizeGraphForStorage({
+      accessToken: 'demo-mode-token',
+      refreshToken: '',
+      expiresIn: 24 * 60 * 60,
+      tokenType: 'Bearer',
+      scope: OAUTH_CONFIG.scope,
+      clientId: OAUTH_CONFIG.clientId,
+      tenantId: OAUTH_CONFIG.tenantId,
+      redirectUri: OAUTH_CONFIG.redirectUri,
+      expiresAt: expiresAt
+    }),
+    targetEmail: DEMO_TARGET_EMAIL,
+    quitAfterSend: false,
+    allLowercase: false
+  };
+}
+
+function simulateDemoSend(contactName) {
+  var statusMsg = {};
+  statusMsg[KEY_STATUS] = 'Sending (demo)...';
+  Pebble.sendAppMessage(statusMsg);
+
+  setTimeout(function() {
+    var doneMsg = {};
+    doneMsg[KEY_STATUS] = 'Email sent to ' + contactName + '!';
+    Pebble.sendAppMessage(doneMsg);
+  }, 350);
+}
 
 // Register appmessage handler IMMEDIATELY
 console.log('=== REGISTERING APPMESSAGE HANDLER ===');
@@ -199,6 +267,15 @@ function handleAppMessage(e) {
 
   var contact = s.contacts[index];
   var outgoingMessageText = formatOutgoingMessageText(rawMessageText, s);
+
+  if (isDemoModeEnabled()) {
+    var demoContactName = String(contact && contact.name || 'contact');
+    console.log('Demo mode enabled; skipping token validation and network send.');
+    simulateDemoSend(demoContactName);
+    sendAuthStateToWatch(AUTH_STATE_OK);
+    return;
+  }
+
   console.log('Sending ' + (isCannedSelection ? 'canned' : 'dictated') + ' message for contactIndex=' + index);
 
   // Send status update to watch
@@ -536,6 +613,10 @@ function getContactDisplayName(contact) {
 }
 
 function getSettings() {
+  if (isDemoModeEnabled()) {
+    return buildDemoSettings();
+  }
+
   try {
     var parsed = JSON.parse(localStorage.getItem('settings')) || {};
 
@@ -658,6 +739,10 @@ Pebble.addEventListener('ready', function() {
   console.log('=== PKJS READY EVENT ===');
   console.log('Pebble object available: ' + (typeof Pebble !== 'undefined'));
   console.log('sendAppMessage available: ' + (typeof Pebble.sendAppMessage === 'function'));
+
+  if (isDemoModeEnabled()) {
+    console.log('Demo mode active: using sample contacts/canned messages and bypassing auth.');
+  }
 
   sendContactsToWatch();
   sendCannedMessagesToWatch();
