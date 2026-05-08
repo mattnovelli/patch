@@ -1,7 +1,7 @@
 {
   "name": "patch",
   "author": "Matthew Novelli",
-  "version": "0.3.0",
+  "version": "1.0.0",
   "description": "Patch is a Pebble voice-to-message relay app that enables iOS users to send text messages through a frankly insane workaround.",
   "homepage": "https://mattnovelli.github.io/patch/",
   "repository": {
