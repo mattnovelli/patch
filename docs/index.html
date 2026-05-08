@@ -24,6 +24,10 @@
         --warn-bg: #fff4e8;
         --warn-border: #f5d2a5;
         --warn-text: #8e520c;
+        --warning-card-bg: #fff9d8;
+        --warning-card-border: #eacb59;
+        --warning-card-title: #5f4b00;
+        --warning-card-text: #6e5a14;
         --label: #425168;
         --input-bg: #ffffff;
         --input-border: #bcc8d8;
@@ -54,6 +58,10 @@
           --warn-bg: #3f2a13;
           --warn-border: #67451f;
           --warn-text: #ffd8a8;
+          --warning-card-bg: #342c0d;
+          --warning-card-border: #8a7523;
+          --warning-card-title: #ffe798;
+          --warning-card-text: #f4dea1;
           --label: #d0dcf7;
           --input-bg: #111a2f;
           --input-border: #3a4666;
@@ -101,6 +109,22 @@
         box-shadow: none;
       }
 
+      .card.warning-card {
+        background: var(--warning-card-bg);
+        border-color: var(--warning-card-border);
+      }
+
+      .card.warning-card h2,
+      .card.warning-card h3 {
+        color: var(--warning-card-title);
+      }
+
+      .card.warning-card p,
+      .card.warning-card li,
+      .card.warning-card .help {
+        color: var(--warning-card-text);
+      }
+
       h1 {
         margin: 0 0 8px;
         font-size: 24px;
@@ -108,7 +132,7 @@
 
       h2 {
         margin: 0 0 10px;
-        font-size: 18px;
+        font-size: 25px;
       }
 
       p {
@@ -120,6 +144,10 @@
         margin-top: 6px;
         font-size: 12px;
         color: var(--muted);
+      }
+
+      li {
+        margin-bottom: 1rem;
       }
 
       .section {
@@ -434,18 +462,26 @@
           Pebble.
         </h2>
         <p>
-          When you send a message, Patch sends an email to yourself with the
-          message body and recipient details. Then, an iOS automation intercepts
-          the email and immediately sends the text message.
+          Patch uses Outlook to <i>send an email to yourself</i>, which triggers
+          a Shortcuts automation to intercept the notification and send the text
+          message.
         </p>
         <p>
           The whole process takes less than ten seconds and requires no
           intervention after you hit send on the Pebble.
         </p>
-        <!-- <p>
-          This method isn't perfect, and there's a small delay, but Patch
-          undeniably brings Messages to your wrist!
-        </p> -->
+      </div>
+      <div class="card warning-card">
+        <h2>Heads up!</h2>
+        <p>
+          Patch stores Outlook OAuth tokens and contact phone numbers in your
+          Pebble App's browser storage.
+        </p>
+        <p>
+          If someone can access your device logs, browser/session storage, or
+          your Outlook account, they may be able to view message metadata or
+          send mail. For best safety, use a dedicated Outlook account.
+        </p>
       </div>
       <div class="card">
         <div
@@ -469,8 +505,8 @@
               rel="noopener noreferrer"
               href="https://support.microsoft.com/en-us/office/set-up-an-outlook-account-on-the-ios-mail-app-7e5b180f-bc8f-45cc-8da1-5cefc1e633d1"
               >(Guide)</a
-            >. Patch uses Outlook since it's free and supports push
-            notifications to iOS.
+            >. The email must end with "@outlook.com". Patch uses Outlook since
+            it's free and supports push notifications to iOS.
           </li>
           <li>
             <a
@@ -495,17 +531,24 @@
             >.
           </li>
           <li>
-            Navigate to the "Automations" tab. Create a new automation and
-            select "Email."
+            Navigate to the <b>Automations</b> tab. Create a new automation and
+            select <b>Email</b>.
           </li>
 
           <li>
-            Configure the following:
-            <div class="shortcut-table-wrap">
-              <img style="max-width: 100%" src="img/automation-config.png" />
-            </div>
+            Configure the following, using your outlook email instead of
+            "example@outlook.com":
+            <!-- <div class="shortcut-table-wrap"> -->
+            <img
+              style="margin: 1em; max-width: 460px; border-radius: 12px"
+              src="img/automation-config.png"
+            />
+            <!-- </div> -->
           </li>
-          <li>Select the Patch Shortcut from your Shortcut library.</li>
+          <li>
+            Click <b>Next</b>. Then, select the <b>Patch</b> Shortcut from your
+            Shortcut library.
+          </li>
         </ol>
 
         <div
@@ -530,9 +573,9 @@
               >
               <div class="option-content">
                 <div class="help">
-                  This client is maintained by Patch and intended for public
-                  use. While easier to set up, you're granting us permission to
-                  send emails from your address. We promise not to do anything
+                  This Patch-managed sign-in app is intended for public use.
+                  Choosing this option grants the app permission to send emails
+                  from your Outlook account. We promise not to do anything
                   nefarious, and strongly recommend you
                   <a
                     class="inline-link"
@@ -619,12 +662,13 @@
                     <span class="mono">offline_access</span>, enable public
                     client flows, then paste your Client ID.
                   </li>
+                  <li>
+                    <div id="receiverInfo"></div>
+                  </li>
                 </ol>
               </div>
             </div>
           </div>
-
-          <div class="help mono" id="receiverInfo"></div>
         </div>
 
         <div class="section">
@@ -675,7 +719,7 @@
           <h3>Canned Messages</h3>
           <div class="help">
             Hold the middle button on a contact to select and send a canned
-            messages.
+            message.
           </div>
           <div id="cannedList" class="canned-list"></div>
           <div id="cannedEmpty" class="help">No canned messages yet.</div>
@@ -1491,8 +1535,7 @@
 
         function initUI() {
           document.getElementById("receiverInfo").textContent =
-            "Current page's redirect URI (configure this exact value in Azure): " +
-            receiverUri();
+            "Add redirect URI: " + receiverUri();
 
           document
             .getElementById("addContactButton")

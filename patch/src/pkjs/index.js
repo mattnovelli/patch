@@ -121,8 +121,7 @@ var s_refreshWaiters = [];
 console.log('=== REGISTERING APPMESSAGE HANDLER ===');
 Pebble.addEventListener('appmessage', function(e) {
   console.log('=== APPMESSAGE HANDLER TRIGGERED ===');
-  console.log('Raw event: ' + JSON.stringify(e));
-  console.log('Event payload: ' + JSON.stringify(e.payload));
+  console.log('Appmessage payload keys: ' + Object.keys(e.payload || {}).join(','));
   
   handleAppMessage(e);
 });
@@ -140,14 +139,8 @@ function handleAppMessage(e) {
   var rawMessageText = '';
   
   console.log('=== Message received from watch ===');
-  console.log('Parsed contact index: ' + index);
-  console.log('Parsed voice text: ' + text);
-  console.log('Parsed canned message index: ' + cannedIndex);
-  
-  console.log('Contact index: ' + index);
-  console.log('Voice text: ' + text);
-  console.log('Canned index: ' + cannedIndex);
-  console.log('Current settings: ' + JSON.stringify(s));
+  console.log('Message metadata: contactIndex=' + index + ', hasVoiceText=' + (!!text) + ', cannedIndex=' + (isCannedSelection ? cannedIndex : 'none'));
+  console.log('Current settings summary: ' + getSettingsLogSummary(s));
 
   // Validation
   if (typeof index !== 'number' || !s.contacts[index]) {
@@ -206,7 +199,7 @@ function handleAppMessage(e) {
 
   var contact = s.contacts[index];
   var outgoingMessageText = formatOutgoingMessageText(rawMessageText, s);
-  console.log('Sending ' + (isCannedSelection ? 'canned' : 'dictated') + ' message for contact: ' + contact.name + ' (' + contact.phone + ')');
+  console.log('Sending ' + (isCannedSelection ? 'canned' : 'dictated') + ' message for contactIndex=' + index);
 
   // Send status update to watch
   var statusMsg = {};
@@ -254,7 +247,7 @@ function sendEmailWithToken(accessToken, contact, messageText, targetEmail) {
   };
 
   var emailBody = JSON.stringify(messageData);
-  console.log('JSON payload: ' + emailBody);
+  console.log('Prepared iOS Shortcut payload for send (content redacted).');
 
   // Construct Graph sendMail payload
   var body = {
@@ -273,7 +266,7 @@ function sendEmailWithToken(accessToken, contact, messageText, targetEmail) {
 
   console.log('Sending email via Microsoft Graph...');
   console.log('Request URL: https://graph.microsoft.com/v1.0/me/sendMail');
-  console.log('Request body: ' + JSON.stringify(body, null, 2));
+  console.log('Request body prepared (content redacted).');
   
   // Try modern fetch first, fallback to XMLHttpRequest
   if (typeof fetch === 'function') {
@@ -513,6 +506,23 @@ function normalizeGraphForStorage(graph) {
   };
 }
 
+function getSettingsLogSummary(settings) {
+  var s = settings || {};
+  var graph = s.graph || {};
+  var contacts = Array.isArray(s.contacts) ? s.contacts : [];
+  var cannedMessages = Array.isArray(s.cannedMessages) ? s.cannedMessages : [];
+
+  return JSON.stringify({
+    contactsCount: contacts.length,
+    cannedMessagesCount: cannedMessages.length,
+    hasTargetEmail: !!s.targetEmail,
+    hasAccessToken: !!graph.accessToken,
+    hasRefreshToken: !!graph.refreshToken,
+    quitAfterSend: !!s.quitAfterSend,
+    allLowercase: !!s.allLowercase
+  });
+}
+
 function getContactDisplayName(contact) {
   var c = normalizeContact(contact);
   if (!c.name) {
@@ -602,8 +612,7 @@ function sendAuthStateToWatch(authState) {
 
 function sendContactsToWatch() {
   var s = getSettings();
-  console.log('Current settings: ' + JSON.stringify(s));
-  console.log('Contacts array: ' + JSON.stringify(s.contacts));
+  console.log('Current settings summary: ' + getSettingsLogSummary(s));
   console.log('Contacts length: ' + s.contacts.length);
   
   if (s.contacts.length === 0) {
@@ -612,7 +621,7 @@ function sendContactsToWatch() {
   
   var names = s.contacts.map(function(c) { return getContactDisplayName(c); }).join('\n');
   var authState = getAuthState(s);
-  console.log('Sending contacts to watch: "' + names + '"');
+  console.log('Sending contacts to watch: count=' + s.contacts.length + ', authState=' + authState);
   var msg = {};
   msg[KEY_CONTACT_NAMES] = names;
   msg[KEY_QUIT_AFTER_SEND] = s.quitAfterSend ? 1 : 0;
@@ -630,7 +639,7 @@ function sendContactsToWatch() {
 function sendCannedMessagesToWatch() {
   var s = getSettings();
   var labels = buildCannedLabelsPayload(s.cannedMessages);
-  console.log('Sending canned labels to watch: "' + labels + '"');
+  console.log('Sending canned labels to watch: count=' + normalizeCannedMessages(s.cannedMessages).length);
 
   var msg = {};
   msg[KEY_CANNED_LABELS] = labels;
@@ -1267,7 +1276,7 @@ Pebble.addEventListener('showConfiguration', function() {
     authState: authState
   });
 
-  console.log('Opening config URL: ' + configURL);
+  console.log('Opening config URL (query redacted)');
   Pebble.openURL(configURL);
 });
 
@@ -1348,7 +1357,7 @@ function mergePersistedSettingsFromConfigResponse(newSettings) {
 // Handle configuration results
 Pebble.addEventListener('webviewclosed', function(e) {
   console.log('=== Configuration closed ===');
-  console.log('Response: ' + (e.response || 'No response'));
+  console.log('Response received: ' + (e.response ? 'yes' : 'no'));
 
   var parsedSettings = null;
   var authPayload = null;
@@ -1365,7 +1374,7 @@ Pebble.addEventListener('webviewclosed', function(e) {
       }
 
       var mergedSettings = mergePersistedSettingsFromConfigResponse(newSettings);
-      console.log('New settings: ' + JSON.stringify(mergedSettings));
+      console.log('New settings summary: ' + getSettingsLogSummary(mergedSettings));
       setSettings(mergedSettings);
       sendContactsToWatch();
       sendCannedMessagesToWatch();
