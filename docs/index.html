@@ -305,6 +305,32 @@
         white-space: nowrap;
       }
 
+      .canned-list {
+        display: flex;
+        flex-direction: column;
+        gap: 10px;
+        margin-top: 10px;
+      }
+
+      .canned-row {
+        display: grid;
+        grid-template-columns: minmax(0, 1fr) auto;
+        gap: 8px;
+        align-items: end;
+        padding: 10px;
+        border: 1px solid var(--table-border);
+        border-radius: 8px;
+        background: var(--surface-soft);
+      }
+
+      .canned-row .field {
+        margin: 0;
+      }
+
+      .canned-row button {
+        white-space: nowrap;
+      }
+
       .toggle-row {
         display: flex;
         align-items: center;
@@ -377,6 +403,10 @@
         }
 
         .contact-row {
+          grid-template-columns: 1fr;
+        }
+
+        .canned-row {
           grid-template-columns: 1fr;
         }
       }
@@ -460,7 +490,7 @@
             <a
               target="_blank"
               rel="noopener noreferrer"
-              href="https://www.icloud.com/shortcuts/10fcb2c6db7c435292cde5d9cd3e6409"
+              href="https://www.icloud.com/shortcuts/69a6712adca24b93bd323211e946ab90"
               >Patch iOS Shortcut</a
             >.
           </li>
@@ -641,6 +671,21 @@
           </div>
         </div>
 
+        <div class="section">
+          <h3>Canned Messages</h3>
+          <div class="help">
+            Hold the middle button on a contact to select and send a canned
+            messages.
+          </div>
+          <div id="cannedList" class="canned-list"></div>
+          <div id="cannedEmpty" class="help">No canned messages yet.</div>
+          <div class="btn-row" style="margin-top: 10px">
+            <button id="addCannedButton" class="secondary" type="button">
+              Add Canned Message
+            </button>
+          </div>
+        </div>
+
         <div class="btn-row section" style="padding-top: 18px">
           <button id="saveButton" class="primary" type="button">Save</button>
           <button id="cancelButton" class="secondary" type="button">
@@ -747,6 +792,8 @@
           "1F4A9",
         ];
         var CONTACT_EMOJI_LOOKUP = {};
+        var MAX_CANNED_MESSAGES = 10;
+        var MAX_CANNED_MESSAGE_LENGTH = 140;
 
         for (
           var emojiIdx = 0;
@@ -758,6 +805,7 @@
 
         var currentSettings = {
           contacts: [],
+          cannedMessages: [],
           graph: {},
           graphAuth: null,
           targetEmail: "",
@@ -867,6 +915,34 @@
           return normalized;
         }
 
+        function normalizeCannedMessages(messages) {
+          var list = Array.isArray(messages) ? messages : [];
+          var normalized = [];
+
+          for (var i = 0; i < list.length; i++) {
+            var raw = list[i];
+            var text = typeof raw === "string" ? raw : raw && raw.text;
+            text = String(text || "")
+              .replace(/[\r\n]+/g, " ")
+              .trim();
+
+            if (!text) {
+              continue;
+            }
+
+            if (text.length > MAX_CANNED_MESSAGE_LENGTH) {
+              text = text.slice(0, MAX_CANNED_MESSAGE_LENGTH);
+            }
+
+            normalized.push(text);
+            if (normalized.length >= MAX_CANNED_MESSAGES) {
+              break;
+            }
+          }
+
+          return normalized;
+        }
+
         function populateEmojiSelect(select) {
           if (!select) {
             return;
@@ -901,6 +977,20 @@
             return;
           }
           hint.style.display = list.children.length > 0 ? "none" : "block";
+        }
+
+        function updateCannedEmptyHint() {
+          var list = document.getElementById("cannedList");
+          var hint = document.getElementById("cannedEmpty");
+          var addButton = document.getElementById("addCannedButton");
+          if (!list || !hint) {
+            return;
+          }
+
+          hint.style.display = list.children.length > 0 ? "none" : "block";
+          if (addButton) {
+            addButton.disabled = list.children.length >= MAX_CANNED_MESSAGES;
+          }
         }
 
         function createContactRow(contact) {
@@ -951,6 +1041,40 @@
           }
           list.appendChild(createContactRow(contact || {}));
           updateContactsEmptyHint();
+        }
+
+        function createCannedRow(textValue) {
+          var row = document.createElement("div");
+          row.className = "canned-row";
+          row.innerHTML = [
+            '<div class="field">',
+            "<label>Message</label>",
+            '<input type="text" class="canned-text" maxlength="140" placeholder="On my way" />',
+            "</div>",
+            '<button type="button" class="secondary remove-canned">Remove</button>',
+          ].join("");
+
+          row.querySelector(".canned-text").value = String(textValue || "");
+          row
+            .querySelector(".remove-canned")
+            .addEventListener("click", function () {
+              if (row.parentNode) {
+                row.parentNode.removeChild(row);
+              }
+              updateCannedEmptyHint();
+            });
+
+          return row;
+        }
+
+        function addCannedRow(messageText) {
+          var list = document.getElementById("cannedList");
+          if (!list || list.children.length >= MAX_CANNED_MESSAGES) {
+            return;
+          }
+
+          list.appendChild(createCannedRow(messageText || ""));
+          updateCannedEmptyHint();
         }
 
         function randomString(length) {
@@ -1016,6 +1140,9 @@
             return;
           }
           currentSettings.contacts = normalizeContacts(obj.contacts);
+          currentSettings.cannedMessages = normalizeCannedMessages(
+            obj.cannedMessages,
+          );
           currentSettings.graph = obj.graph || {};
           currentSettings.graphAuth = obj.graphAuth || null;
           currentSettings.targetEmail = obj.targetEmail || "";
@@ -1044,6 +1171,7 @@
             !!currentSettings.allLowercase;
 
           var contacts = currentSettings.contacts || [];
+          var cannedMessages = currentSettings.cannedMessages || [];
 
           var contactsList = document.getElementById("contactsList");
           if (contactsList) {
@@ -1056,6 +1184,19 @@
               }
             }
           }
+
+          var cannedList = document.getElementById("cannedList");
+          if (cannedList) {
+            cannedList.innerHTML = "";
+            for (
+              var cannedIdx = 0;
+              cannedIdx < cannedMessages.length;
+              cannedIdx++
+            ) {
+              addCannedRow(cannedMessages[cannedIdx]);
+            }
+          }
+          updateCannedEmptyHint();
 
           var queryClientId = normalizeCustomClientId(getParam("client_id"));
           var savedCustomClientId = normalizeCustomClientId(
@@ -1089,6 +1230,7 @@
         function readFormIntoSettings() {
           var settings = {
             contacts: [],
+            cannedMessages: [],
             graph: currentSettings.graph || {},
             targetEmail: document.getElementById("targetEmail").value.trim(),
             quitAfterSend: document.getElementById("quitAfterSend").checked,
@@ -1113,6 +1255,23 @@
               });
             }
           }
+
+          var cannedRows = document.querySelectorAll("#cannedList .canned-row");
+          for (var cannedIdx = 0; cannedIdx < cannedRows.length; cannedIdx++) {
+            var textInput = cannedRows[cannedIdx].querySelector(".canned-text");
+            var text = textInput ? textInput.value : "";
+            text = String(text || "")
+              .replace(/[\r\n]+/g, " ")
+              .trim();
+
+            if (text) {
+              settings.cannedMessages.push(text);
+            }
+          }
+
+          settings.cannedMessages = normalizeCannedMessages(
+            settings.cannedMessages,
+          );
 
           if (currentSettings.graphAuth && currentSettings.graphAuth.code) {
             settings.graphAuth = currentSettings.graphAuth;
@@ -1339,6 +1498,12 @@
             .getElementById("addContactButton")
             .addEventListener("click", function () {
               addContactRow({});
+            });
+
+          document
+            .getElementById("addCannedButton")
+            .addEventListener("click", function () {
+              addCannedRow("");
             });
 
           document

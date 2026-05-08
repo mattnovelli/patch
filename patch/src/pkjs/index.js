@@ -11,10 +11,16 @@ var KEY_STATUS = 3;
 var KEY_CONTACT_NAMES = 4;
 var KEY_QUIT_AFTER_SEND = 5;
 var KEY_AUTH_STATE = 6;
+var KEY_CANNED_LABELS = 7;
+var KEY_CANNED_INDEX = 8;
 
 var AUTH_STATE_UNKNOWN = 0;
 var AUTH_STATE_OK = 1;
 var AUTH_STATE_REAUTH_REQUIRED = 2;
+
+var MAX_CANNED_MESSAGES = 10;
+var MAX_CANNED_MESSAGE_LENGTH = 140;
+var CANNED_LABEL_MAX_CHARS = 28;
 
 var CONTACT_EMOJI_DEFAULT_CODE = '1F603';
 var CONTACT_EMOJI_ALLOWED_CODES = [
@@ -106,6 +112,7 @@ var TOKEN_REFRESH_BUFFER_MS = 10 * 60 * 1000;
 var TOKEN_REFRESH_TIMEOUT_MS = 15 * 1000;
 var TOKEN_REFRESH_MAX_ATTEMPTS = 3;
 var TOKEN_REFRESH_BASE_RETRY_MS = 1200;
+var DEBUG_HEARTBEAT_STORAGE_KEY = 'patch_pkjs_debug_heartbeat';
 
 var s_refreshInFlight = false;
 var s_refreshWaiters = [];
@@ -127,14 +134,19 @@ function handleAppMessage(e) {
   var dict = e.payload || {};
   var index = dict[KEY_CONTACT_INDEX];
   var text = dict[KEY_VOICE_TEXT];
+  var cannedIndex = dict[KEY_CANNED_INDEX];
+  var isCannedSelection = typeof cannedIndex === 'number';
   var s = getSettings();
+  var rawMessageText = '';
   
   console.log('=== Message received from watch ===');
   console.log('Parsed contact index: ' + index);
   console.log('Parsed voice text: ' + text);
+  console.log('Parsed canned message index: ' + cannedIndex);
   
   console.log('Contact index: ' + index);
   console.log('Voice text: ' + text);
+  console.log('Canned index: ' + cannedIndex);
   console.log('Current settings: ' + JSON.stringify(s));
 
   // Validation
@@ -145,13 +157,34 @@ function handleAppMessage(e) {
     Pebble.sendAppMessage(msg);
     return;
   }
-  
-  if (!text || !text.length) {
-    console.log('ERROR: Empty voice message');
-    var msg = {};
-    msg[KEY_ERROR] = 'No voice message recorded';
-    Pebble.sendAppMessage(msg);
-    return;
+
+  if (isCannedSelection) {
+    if (cannedIndex < 0 || !s.cannedMessages || !s.cannedMessages[cannedIndex]) {
+      console.log('ERROR: Invalid canned message selection');
+      var cannedMsg = {};
+      cannedMsg[KEY_ERROR] = 'Invalid canned message selected';
+      Pebble.sendAppMessage(cannedMsg);
+      return;
+    }
+
+    rawMessageText = String(s.cannedMessages[cannedIndex] || '');
+    if (!rawMessageText.length) {
+      console.log('ERROR: Empty canned message text');
+      var emptyCannedMsg = {};
+      emptyCannedMsg[KEY_ERROR] = 'Selected canned message is empty';
+      Pebble.sendAppMessage(emptyCannedMsg);
+      return;
+    }
+  } else {
+    if (!text || !text.length) {
+      console.log('ERROR: Empty voice message');
+      var voiceMsg = {};
+      voiceMsg[KEY_ERROR] = 'No voice message recorded';
+      Pebble.sendAppMessage(voiceMsg);
+      return;
+    }
+
+    rawMessageText = String(text);
   }
   
   if (!s.graph || (!s.graph.accessToken && !s.graph.refreshToken)) {
@@ -172,8 +205,8 @@ function handleAppMessage(e) {
   }
 
   var contact = s.contacts[index];
-  var outgoingMessageText = formatOutgoingMessageText(text, s);
-  console.log('Sending message for contact: ' + contact.name + ' (' + contact.phone + ')');
+  var outgoingMessageText = formatOutgoingMessageText(rawMessageText, s);
+  console.log('Sending ' + (isCannedSelection ? 'canned' : 'dictated') + ' message for contact: ' + contact.name + ' (' + contact.phone + ')');
 
   // Send status update to watch
   var statusMsg = {};
@@ -417,6 +450,53 @@ function normalizeContacts(contacts) {
   return normalized;
 }
 
+function normalizeCannedMessages(messages) {
+  var list = Array.isArray(messages) ? messages : [];
+  var normalized = [];
+
+  for (var i = 0; i < list.length; i++) {
+    var raw = list[i];
+    var text = typeof raw === 'string' ? raw : (raw && raw.text);
+    text = String(text || '').replace(/[\r\n]+/g, ' ').trim();
+
+    if (!text) {
+      continue;
+    }
+
+    if (text.length > MAX_CANNED_MESSAGE_LENGTH) {
+      text = text.slice(0, MAX_CANNED_MESSAGE_LENGTH);
+    }
+
+    normalized.push(text);
+    if (normalized.length >= MAX_CANNED_MESSAGES) {
+      break;
+    }
+  }
+
+  return normalized;
+}
+
+function toCannedLabel(messageText) {
+  var label = String(messageText || '').trim();
+  if (label.length <= CANNED_LABEL_MAX_CHARS) {
+    return label;
+  }
+
+  var trimmedLength = CANNED_LABEL_MAX_CHARS - 3;
+  if (trimmedLength < 1) {
+    return label.slice(0, CANNED_LABEL_MAX_CHARS);
+  }
+
+  return label.slice(0, trimmedLength).trim() + '...';
+}
+
+function buildCannedLabelsPayload(cannedMessages) {
+  var list = normalizeCannedMessages(cannedMessages);
+  return list.map(function(messageText) {
+    return toCannedLabel(messageText);
+  }).join('\n');
+}
+
 function normalizeGraphForStorage(graph) {
   var g = graph || {};
 
@@ -451,6 +531,7 @@ function getSettings() {
 
     return {
       contacts: normalizeContacts(parsed.contacts),
+      cannedMessages: normalizeCannedMessages(parsed.cannedMessages),
       graph: normalizeGraphForStorage(parsed.graph),
       targetEmail: String(parsed.targetEmail || ''),
       quitAfterSend: !!parsed.quitAfterSend,
@@ -459,6 +540,7 @@ function getSettings() {
   } catch (e) {
     return {
       contacts: [],
+      cannedMessages: [],
       graph: normalizeGraphForStorage(null),
       targetEmail: '',
       quitAfterSend: false,
@@ -472,6 +554,7 @@ function setSettings(s) {
   var source = s || {};
   var normalized = {
     contacts: normalizeContacts(source.contacts),
+    cannedMessages: normalizeCannedMessages(source.cannedMessages),
     graph: normalizeGraphForStorage(source.graph),
     targetEmail: String(source.targetEmail || ''),
     quitAfterSend: !!source.quitAfterSend,
@@ -544,27 +627,37 @@ function sendContactsToWatch() {
   );
 }
 
+function sendCannedMessagesToWatch() {
+  var s = getSettings();
+  var labels = buildCannedLabelsPayload(s.cannedMessages);
+  console.log('Sending canned labels to watch: "' + labels + '"');
+
+  var msg = {};
+  msg[KEY_CANNED_LABELS] = labels;
+  Pebble.sendAppMessage(msg,
+    function() {
+      console.log('Canned messages sent successfully');
+    },
+    function(e) {
+      console.log('Failed to send canned messages: ' + JSON.stringify(e));
+    }
+  );
+}
+
 
 Pebble.addEventListener('ready', function() {
   console.log('=== PKJS READY EVENT ===');
   console.log('Pebble object available: ' + (typeof Pebble !== 'undefined'));
   console.log('sendAppMessage available: ' + (typeof Pebble.sendAppMessage === 'function'));
-  
-  // Test message sending to watch immediately
-  console.log('Testing message sending to watch...');
-  var testMsg = {};
-  testMsg[KEY_STATUS] = 'JS Ready!';
-  Pebble.sendAppMessage(testMsg, 
-    function() { console.log('Test message sent OK'); },
-    function(e) { console.log('Test message failed: ' + JSON.stringify(e)); }
-  );
-  
+
   sendContactsToWatch();
-  
-  // Test heartbeat to ensure JS is running
-  setInterval(function() {
-    console.log('=== JS HEARTBEAT === ' + new Date().toISOString());
-  }, 10000);
+  sendCannedMessagesToWatch();
+
+  if (localStorage.getItem(DEBUG_HEARTBEAT_STORAGE_KEY) === '1') {
+    setInterval(function() {
+      console.log('=== JS HEARTBEAT === ' + new Date().toISOString());
+    }, 10000);
+  }
 });
 
 // OAuth 2.0 Configuration for Public Client (PKCE Flow)
@@ -799,6 +892,7 @@ function buildConfigPageSettingsPayload(settings, authConfig) {
   var source = settings || {};
   return {
     contacts: normalizeContacts(source.contacts),
+    cannedMessages: normalizeCannedMessages(source.cannedMessages),
     graph: {
       clientId: authConfig.clientId,
       tenantId: authConfig.tenantId,
@@ -1226,6 +1320,9 @@ function mergePersistedSettingsFromConfigResponse(newSettings) {
 
   var merged = {
     contacts: normalizeContacts(incoming.contacts),
+    cannedMessages: normalizeCannedMessages(typeof incoming.cannedMessages === 'undefined'
+      ? existing.cannedMessages
+      : incoming.cannedMessages),
     graph: normalizeGraphForStorage(existingGraph),
     targetEmail: String(incoming.targetEmail || ''),
     quitAfterSend: !!incoming.quitAfterSend,
@@ -1271,6 +1368,7 @@ Pebble.addEventListener('webviewclosed', function(e) {
       console.log('New settings: ' + JSON.stringify(mergedSettings));
       setSettings(mergedSettings);
       sendContactsToWatch();
+      sendCannedMessagesToWatch();
       parsedSettings = mergedSettings;
     } catch (error) {
       console.log('Error parsing config response: ' + error);

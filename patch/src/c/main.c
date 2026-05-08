@@ -9,6 +9,8 @@
 #define KEY_CONTACT_NAMES 4
 #define KEY_QUIT_AFTER_SEND 5
 #define KEY_AUTH_STATE 6
+#define KEY_CANNED_LABELS 7
+#define KEY_CANNED_INDEX 8
 
 #define AUTH_STATE_UNKNOWN 0
 #define AUTH_STATE_OK 1
@@ -19,6 +21,7 @@
 #define SENT_ANIM_END_HOLD_MS 450
 #define SENT_FALLBACK_HOLD_MS 950
 #define ERROR_MODAL_DISMISS_MS 3000
+#define NOTICE_MODAL_DISMISS_MS 1400
 
 typedef enum {
   AppAuthStateUnknown = AUTH_STATE_UNKNOWN,
@@ -33,11 +36,17 @@ static Window *s_sent_modal_window;
 static Layer *s_sent_modal_layer;
 static Window *s_error_modal_window;
 static Layer *s_error_modal_layer;
+static Window *s_notice_modal_window;
+static Layer *s_notice_modal_layer;
+static Window *s_canned_window;
+static MenuLayer *s_canned_menu_layer;
 
 // Contact list received from JS (names only); emails live on the phone side
 static char **s_contacts = NULL;
 static int s_contact_count = 0;
 static bool s_contacts_loaded = false;
+static char **s_canned_labels = NULL;
+static int s_canned_count = 0;
 static AppAuthState s_auth_state = AppAuthStateUnknown;
 static bool s_quit_after_send_enabled = false;
 static bool s_pending_quit_after_send = false;
@@ -46,9 +55,12 @@ static DictationSession *s_dictation;
 static int s_selected_index = -1;
 static AppTimer *s_sent_modal_hide_timer;
 static AppTimer *s_error_modal_timer;
+static AppTimer *s_notice_modal_timer;
 static bool s_sent_modal_visible = false;
 static bool s_error_modal_visible = false;
+static bool s_notice_modal_visible = false;
 static char s_error_modal_message[96] = "Message could not be sent.";
+static char s_notice_modal_message[80] = "Patch";
 
 #ifdef PBL_COLOR
 static GDrawCommandSequence *s_sent_sequence;
@@ -585,6 +597,116 @@ static void error_modal_window_unload(Window *window) {
   }
 }
 
+static void cancel_notice_modal_timer(void) {
+  if (!s_notice_modal_timer) {
+    return;
+  }
+
+  app_timer_cancel(s_notice_modal_timer);
+  s_notice_modal_timer = NULL;
+}
+
+static void dismiss_notice_modal(void) {
+  if (!s_notice_modal_visible || !s_notice_modal_window) {
+    return;
+  }
+
+  if (window_stack_get_top_window() == s_notice_modal_window) {
+    window_stack_pop(true);
+  }
+}
+
+static void notice_modal_timer_cb(void *context) {
+  (void)context;
+  s_notice_modal_timer = NULL;
+  dismiss_notice_modal();
+}
+
+static void reset_notice_modal_timer(void) {
+  cancel_notice_modal_timer();
+  s_notice_modal_timer = app_timer_register(NOTICE_MODAL_DISMISS_MS, notice_modal_timer_cb, NULL);
+}
+
+static void show_notice_modal(const char *message) {
+  if (message && *message) {
+    strncpy(s_notice_modal_message, message, sizeof(s_notice_modal_message) - 1);
+    s_notice_modal_message[sizeof(s_notice_modal_message) - 1] = '\0';
+  }
+
+  if (!s_notice_modal_window) {
+    return;
+  }
+
+  if (s_notice_modal_visible) {
+    if (s_notice_modal_layer) {
+      layer_mark_dirty(s_notice_modal_layer);
+    }
+    reset_notice_modal_timer();
+    return;
+  }
+
+  window_stack_push(s_notice_modal_window, true);
+}
+
+static void notice_modal_layer_update_proc(Layer *layer, GContext *ctx) {
+  GRect bounds = layer_get_bounds(layer);
+
+  graphics_context_set_fill_color(ctx, app_primary_color());
+  graphics_fill_rect(ctx, bounds, 0, GCornerNone);
+
+  graphics_context_set_text_color(ctx, GColorWhite);
+  graphics_draw_text(ctx,
+                     "Patch",
+                     fonts_get_system_font(FONT_KEY_GOTHIC_24_BOLD),
+                     GRect(6, 14, bounds.size.w - 12, 30),
+                     GTextOverflowModeTrailingEllipsis,
+                     GTextAlignmentCenter,
+                     NULL);
+
+  graphics_draw_text(ctx,
+                     s_notice_modal_message,
+                     fonts_get_system_font(FONT_KEY_GOTHIC_18),
+                     GRect(10, 50, bounds.size.w - 20, bounds.size.h - 66),
+                     GTextOverflowModeWordWrap,
+                     GTextAlignmentCenter,
+                     NULL);
+}
+
+static void notice_modal_window_load(Window *window) {
+  Layer *window_layer = window_get_root_layer(window);
+  GRect bounds = layer_get_bounds(window_layer);
+
+  window_set_background_color(window, app_primary_color());
+  s_notice_modal_layer = layer_create(bounds);
+  layer_set_update_proc(s_notice_modal_layer, notice_modal_layer_update_proc);
+  layer_add_child(window_layer, s_notice_modal_layer);
+}
+
+static void notice_modal_window_appear(Window *window) {
+  (void)window;
+  s_notice_modal_visible = true;
+  reset_notice_modal_timer();
+
+  if (s_notice_modal_layer) {
+    layer_mark_dirty(s_notice_modal_layer);
+  }
+}
+
+static void notice_modal_window_disappear(Window *window) {
+  (void)window;
+  s_notice_modal_visible = false;
+  cancel_notice_modal_timer();
+}
+
+static void notice_modal_window_unload(Window *window) {
+  (void)window;
+
+  if (s_notice_modal_layer) {
+    layer_destroy(s_notice_modal_layer);
+    s_notice_modal_layer = NULL;
+  }
+}
+
 static void free_contacts() {
   if (!s_contacts) return;
   for (int i = 0; i < s_contact_count; i++) {
@@ -641,6 +763,71 @@ static void parse_contacts_string(const char *str) {
   update_empty_state_visibility();
 }
 
+static void free_canned_labels(void) {
+  if (!s_canned_labels) {
+    return;
+  }
+
+  for (int i = 0; i < s_canned_count; i++) {
+    if (s_canned_labels[i]) {
+      free(s_canned_labels[i]);
+    }
+  }
+
+  free(s_canned_labels);
+  s_canned_labels = NULL;
+  s_canned_count = 0;
+}
+
+static void parse_canned_labels_string(const char *str) {
+  free_canned_labels();
+
+  if (!str || !*str) {
+    if (s_canned_menu_layer) {
+      menu_layer_reload_data(s_canned_menu_layer);
+    }
+    return;
+  }
+
+  int count = 1;
+  for (const char *p = str; *p; p++) {
+    if (*p == '\n') {
+      count++;
+    }
+  }
+
+  s_canned_labels = calloc(count, sizeof(char *));
+  s_canned_count = 0;
+
+  const char *start = str;
+  const char *p = str;
+  while (*p) {
+    if (*p == '\n') {
+      int len = p - start;
+      if (len > 0) {
+        s_canned_labels[s_canned_count] = malloc((size_t)len + 1);
+        memcpy(s_canned_labels[s_canned_count], start, (size_t)len);
+        s_canned_labels[s_canned_count][len] = '\0';
+        s_canned_count++;
+      }
+      start = p + 1;
+    }
+    p++;
+  }
+
+  if (p != start) {
+    int len = p - start;
+    s_canned_labels[s_canned_count] = malloc((size_t)len + 1);
+    memcpy(s_canned_labels[s_canned_count], start, (size_t)len);
+    s_canned_labels[s_canned_count][len] = '\0';
+    s_canned_count++;
+  }
+
+  if (s_canned_menu_layer) {
+    menu_layer_reload_data(s_canned_menu_layer);
+  }
+}
+
 // Menu callbacks
 static uint16_t menu_get_num_rows(MenuLayer *menu_layer, uint16_t section_index, void *context) {
   (void)menu_layer;
@@ -669,7 +856,42 @@ static void menu_draw_row(GContext *ctx, const Layer *cell_layer, MenuIndex *ind
   menu_cell_basic_draw(ctx, cell_layer, s_contacts[index->row], NULL, NULL);
 }
 
+static bool send_message_request_to_js(int contact_index,
+                                       const char *voice_text,
+                                       bool include_voice_text,
+                                       int canned_index,
+                                       bool include_canned_index) {
+  DictionaryIterator *iter;
+  AppMessageResult result = app_message_outbox_begin(&iter);
+  if (result != APP_MSG_OK) {
+    APP_LOG(APP_LOG_LEVEL_ERROR, "Failed to begin outbox: %d", (int)result);
+    return false;
+  }
+
+  dict_write_int(iter, KEY_CONTACT_INDEX, &contact_index, sizeof(contact_index), true);
+
+  if (include_voice_text && voice_text && *voice_text) {
+    dict_write_cstring(iter, KEY_VOICE_TEXT, voice_text);
+  }
+
+  if (include_canned_index) {
+    dict_write_int(iter, KEY_CANNED_INDEX, &canned_index, sizeof(canned_index), true);
+  }
+
+  result = app_message_outbox_send();
+  if (result != APP_MSG_OK) {
+    APP_LOG(APP_LOG_LEVEL_ERROR, "Failed to send message: %d", (int)result);
+    return false;
+  }
+
+  APP_LOG(APP_LOG_LEVEL_INFO, "Message request sent successfully");
+  return true;
+}
+
 static void dictation_callback(DictationSession *session, DictationSessionStatus status, char *transcription, void *context) {
+  (void)session;
+  (void)context;
+
   if (status != DictationSessionStatusSuccess) {
     vibes_short_pulse();
     return;
@@ -678,23 +900,8 @@ static void dictation_callback(DictationSession *session, DictationSessionStatus
   APP_LOG(APP_LOG_LEVEL_INFO, "=== SENDING MESSAGE TO JS ===");
   APP_LOG(APP_LOG_LEVEL_INFO, "Contact index: %d", s_selected_index);
   APP_LOG(APP_LOG_LEVEL_INFO, "Voice text: %s", transcription);
-  
-  DictionaryIterator *iter;
-  AppMessageResult result = app_message_outbox_begin(&iter);
-  if (result != APP_MSG_OK) {
-    APP_LOG(APP_LOG_LEVEL_ERROR, "Failed to begin outbox: %d", (int)result);
-    return;
-  }
-  
-  dict_write_int(iter, KEY_CONTACT_INDEX, &s_selected_index, sizeof(int), true);
-  dict_write_cstring(iter, KEY_VOICE_TEXT, transcription);
-  
-  result = app_message_outbox_send();
-  if (result != APP_MSG_OK) {
-    APP_LOG(APP_LOG_LEVEL_ERROR, "Failed to send message: %d", (int)result);
-  } else {
-    APP_LOG(APP_LOG_LEVEL_INFO, "Message sent successfully");
-  }
+
+  send_message_request_to_js(s_selected_index, transcription, true, -1, false);
 }
 
 static void menu_select_click(MenuLayer *menu_layer, MenuIndex *index, void *context) {
@@ -711,6 +918,102 @@ static void menu_select_click(MenuLayer *menu_layer, MenuIndex *index, void *con
     }
   }
   dictation_session_start(s_dictation);
+}
+
+static uint16_t canned_menu_get_num_rows(MenuLayer *menu_layer, uint16_t section_index, void *context) {
+  (void)menu_layer;
+  (void)section_index;
+  (void)context;
+  return s_canned_count > 0 ? (uint16_t)s_canned_count : 1;
+}
+
+static void canned_menu_draw_row(GContext *ctx, const Layer *cell_layer, MenuIndex *index, void *context) {
+  (void)context;
+
+  if (s_canned_count <= 0) {
+    menu_cell_basic_draw(ctx, cell_layer, "No canned messages", "Add them in settings", NULL);
+    return;
+  }
+
+  menu_cell_basic_draw(ctx, cell_layer, s_canned_labels[index->row], NULL, NULL);
+}
+
+static void canned_menu_select_click(MenuLayer *menu_layer, MenuIndex *index, void *context) {
+  (void)menu_layer;
+  (void)context;
+
+  if (index->row >= s_canned_count || s_selected_index < 0 || s_selected_index >= s_contact_count) {
+    vibes_short_pulse();
+    return;
+  }
+
+  int canned_index = index->row;
+  bool queued = send_message_request_to_js(s_selected_index, NULL, false, canned_index, true);
+  if (!queued) {
+    show_notice_modal("Unable to queue canned send.");
+    vibes_long_pulse();
+    return;
+  }
+
+  window_stack_pop(true);
+}
+
+static void menu_select_long_click(MenuLayer *menu_layer, MenuIndex *index, void *context) {
+  (void)menu_layer;
+  (void)context;
+
+  if (s_auth_state == AppAuthStateReauthRequired || s_contact_count <= 0) {
+    vibes_short_pulse();
+    return;
+  }
+
+  s_selected_index = index->row;
+  if (s_canned_count <= 0 || !s_canned_window) {
+    show_notice_modal("No canned messages in settings.");
+    vibes_short_pulse();
+    return;
+  }
+
+  if (s_canned_menu_layer) {
+    menu_layer_reload_data(s_canned_menu_layer);
+    MenuIndex selected = (MenuIndex){ .section = 0, .row = 0 };
+    menu_layer_set_selected_index(s_canned_menu_layer, selected, MenuRowAlignCenter, false);
+  }
+
+  window_stack_push(s_canned_window, true);
+}
+
+static void canned_window_load(Window *window) {
+  Layer *window_layer = window_get_root_layer(window);
+  GRect bounds = layer_get_bounds(window_layer);
+
+  window_set_background_color(window, app_primary_color());
+  s_canned_menu_layer = menu_layer_create(bounds);
+  menu_layer_set_callbacks(s_canned_menu_layer, NULL, (MenuLayerCallbacks){
+    .get_num_rows = canned_menu_get_num_rows,
+    .draw_row = canned_menu_draw_row,
+    .select_click = canned_menu_select_click,
+  });
+  menu_layer_set_normal_colors(s_canned_menu_layer, GColorWhite, GColorBlack);
+  menu_layer_set_highlight_colors(s_canned_menu_layer, app_accent_color(), GColorWhite);
+  menu_layer_set_click_config_onto_window(s_canned_menu_layer, window);
+  layer_add_child(window_layer, menu_layer_get_layer(s_canned_menu_layer));
+}
+
+static void canned_window_appear(Window *window) {
+  (void)window;
+  if (s_canned_menu_layer) {
+    menu_layer_reload_data(s_canned_menu_layer);
+  }
+}
+
+static void canned_window_unload(Window *window) {
+  (void)window;
+
+  if (s_canned_menu_layer) {
+    menu_layer_destroy(s_canned_menu_layer);
+    s_canned_menu_layer = NULL;
+  }
 }
 
 static void inbox_received(DictionaryIterator *iter, void *context) {
@@ -741,6 +1044,11 @@ static void inbox_received(DictionaryIterator *iter, void *context) {
   Tuple *names = dict_find(iter, KEY_CONTACT_NAMES);
   if (names) {
     parse_contacts_string(names->value->cstring);
+  }
+
+  Tuple *canned_labels = dict_find(iter, KEY_CANNED_LABELS);
+  if (canned_labels) {
+    parse_canned_labels_string(canned_labels->value->cstring);
   }
 
   Tuple *status_t = dict_find(iter, KEY_STATUS);
@@ -783,6 +1091,7 @@ static void main_window_load(Window *window) {
     .get_num_rows = menu_get_num_rows,
     .draw_row = menu_draw_row,
     .select_click = menu_select_click,
+    .select_long_click = menu_select_long_click,
   });
   menu_layer_set_normal_colors(s_menu_layer, GColorWhite, GColorBlack);
   menu_layer_set_highlight_colors(s_menu_layer, app_accent_color(), GColorWhite);
@@ -858,6 +1167,21 @@ static void init(void) {
     .unload = error_modal_window_unload,
   });
 
+  s_notice_modal_window = window_create();
+  window_set_window_handlers(s_notice_modal_window, (WindowHandlers){
+    .load = notice_modal_window_load,
+    .appear = notice_modal_window_appear,
+    .disappear = notice_modal_window_disappear,
+    .unload = notice_modal_window_unload,
+  });
+
+  s_canned_window = window_create();
+  window_set_window_handlers(s_canned_window, (WindowHandlers){
+    .load = canned_window_load,
+    .appear = canned_window_appear,
+    .unload = canned_window_unload,
+  });
+
   s_main_window = window_create();
   window_set_window_handlers(s_main_window, (WindowHandlers){
     .load = main_window_load,
@@ -882,9 +1206,21 @@ static void deinit(void) {
   }
 
   cancel_error_modal_timer();
+  cancel_notice_modal_timer();
 
   if (s_dictation) dictation_session_destroy(s_dictation);
   free_contacts();
+  free_canned_labels();
+
+  if (s_canned_window) {
+    window_destroy(s_canned_window);
+    s_canned_window = NULL;
+  }
+
+  if (s_notice_modal_window) {
+    window_destroy(s_notice_modal_window);
+    s_notice_modal_window = NULL;
+  }
 
   if (s_error_modal_window) {
     window_destroy(s_error_modal_window);

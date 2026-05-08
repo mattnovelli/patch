@@ -16,10 +16,10 @@ Expected URL for this repository:
 
 Set the same URL in these places:
 
-- Azure Entra app Redirect URI (SPA)
+- Azure Entra app Redirect URI (Web)
 - `patch/src/pkjs/index.js` as `redirectUri` (and `CONFIG_PAGE_URL`)
 
-The hosted page receives OAuth callbacks, exchanges auth code for tokens, and returns settings to Pebble via `pebblejs://close#...`.
+The hosted page receives OAuth callbacks, returns callback payload/settings to Pebble via `pebblejs://close#...`, and PKJS performs token redemption.
 
 ## Hybrid Client Model
 
