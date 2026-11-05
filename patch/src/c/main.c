@@ -50,6 +50,9 @@ static int s_canned_count = 0;
 static AppAuthState s_auth_state = AppAuthStateUnknown;
 static bool s_quit_after_send_enabled = false;
 static bool s_pending_quit_after_send = false;
+// When true, the canned window acts as the touch "chooser": a contact-name header
+// and a "Dictate..." row above the canned replies (long-press can't be done by touch).
+static bool s_canned_with_dictate = false;
 
 static DictationSession *s_dictation;
 static int s_selected_index = -1;
@@ -125,13 +128,17 @@ static void summarize_error_message(const char *raw_message, char *dest, size_t 
 
   const char *summary = "Message could not be sent.";
   if (raw_message) {
-    if (contains_case_insensitive(raw_message, "sign in") ||
-        contains_case_insensitive(raw_message, "session expired") ||
-        contains_case_insensitive(raw_message, "auth")) {
-      summary = "Sign in required. Re-open Patch settings.";
-    } else if (contains_case_insensitive(raw_message, "network") ||
-               contains_case_insensitive(raw_message, "timeout")) {
+    // Check transient failures first: the phone's retryable refresh error reads
+    // "Temporary network/auth service issue...", which must not look like a logout.
+    if (contains_case_insensitive(raw_message, "network") ||
+        contains_case_insensitive(raw_message, "timeout") ||
+        contains_case_insensitive(raw_message, "timed out") ||
+        contains_case_insensitive(raw_message, "temporary")) {
       summary = "Connection issue. Check phone network and retry.";
+    } else if (contains_case_insensitive(raw_message, "sign in") ||
+               contains_case_insensitive(raw_message, "session expired") ||
+               contains_case_insensitive(raw_message, "auth")) {
+      summary = "Sign in required. Re-open Patch settings.";
     } else if (contains_case_insensitive(raw_message, "permission")) {
       summary = "Permission denied for Outlook send.";
     } else if (contains_case_insensitive(raw_message, "contact")) {
@@ -904,12 +911,7 @@ static void dictation_callback(DictationSession *session, DictationSessionStatus
   send_message_request_to_js(s_selected_index, transcription, true, -1, false);
 }
 
-static void menu_select_click(MenuLayer *menu_layer, MenuIndex *index, void *context) {
-  (void)menu_layer;
-  (void)context;
-  if (s_contact_count == 0) return;
-  s_selected_index = index->row;
-
+static void start_dictation(void) {
   if (!s_dictation) {
     s_dictation = dictation_session_create(256, dictation_callback, NULL);
     if (s_dictation) {
@@ -917,37 +919,105 @@ static void menu_select_click(MenuLayer *menu_layer, MenuIndex *index, void *con
       dictation_session_enable_confirmation(s_dictation, true);
     }
   }
-  dictation_session_start(s_dictation);
+
+  if (s_dictation) {
+    dictation_session_start(s_dictation);
+  }
+}
+
+static void open_canned_window(bool with_dictate) {
+  s_canned_with_dictate = with_dictate;
+
+  if (s_canned_menu_layer) {
+    menu_layer_reload_data(s_canned_menu_layer);
+    MenuIndex selected = (MenuIndex){ .section = 0, .row = 0 };
+    menu_layer_set_selected_index(s_canned_menu_layer, selected, MenuRowAlignCenter, false);
+  }
+
+  window_stack_push(s_canned_window, true);
+}
+
+static void menu_select_click(MenuLayer *menu_layer, MenuIndex *index, void *context) {
+  (void)menu_layer;
+  (void)context;
+  if (s_contact_count == 0) return;
+  s_selected_index = index->row;
+
+#ifdef PBL_TOUCH
+  // Touch has no long-press, so offer dictation and the canned replies together.
+  if (s_canned_count > 0 && s_canned_window) {
+    open_canned_window(true);
+    return;
+  }
+#endif
+
+  start_dictation();
+}
+
+static int canned_row_offset(void) {
+  return s_canned_with_dictate ? 1 : 0;
 }
 
 static uint16_t canned_menu_get_num_rows(MenuLayer *menu_layer, uint16_t section_index, void *context) {
   (void)menu_layer;
   (void)section_index;
   (void)context;
-  return s_canned_count > 0 ? (uint16_t)s_canned_count : 1;
+  int rows = s_canned_count > 0 ? s_canned_count : 1;
+  return (uint16_t)(rows + canned_row_offset());
+}
+
+static int16_t canned_menu_get_header_height(MenuLayer *menu_layer, uint16_t section_index, void *context) {
+  (void)menu_layer;
+  (void)section_index;
+  (void)context;
+  return s_canned_with_dictate ? MENU_CELL_BASIC_HEADER_HEIGHT : 0;
+}
+
+static void canned_menu_draw_header(GContext *ctx, const Layer *cell_layer, uint16_t section_index, void *context) {
+  (void)section_index;
+  (void)context;
+
+  if (!s_canned_with_dictate || s_selected_index < 0 || s_selected_index >= s_contact_count) {
+    return;
+  }
+
+  menu_cell_basic_header_draw(ctx, cell_layer, s_contacts[s_selected_index]);
 }
 
 static void canned_menu_draw_row(GContext *ctx, const Layer *cell_layer, MenuIndex *index, void *context) {
   (void)context;
+
+  int row = index->row - canned_row_offset();
+  if (row < 0) {
+    menu_cell_basic_draw(ctx, cell_layer, "Dictate...", NULL, NULL);
+    return;
+  }
 
   if (s_canned_count <= 0) {
     menu_cell_basic_draw(ctx, cell_layer, "No canned messages", "Add them in settings", NULL);
     return;
   }
 
-  menu_cell_basic_draw(ctx, cell_layer, s_canned_labels[index->row], NULL, NULL);
+  menu_cell_basic_draw(ctx, cell_layer, s_canned_labels[row], NULL, NULL);
 }
 
 static void canned_menu_select_click(MenuLayer *menu_layer, MenuIndex *index, void *context) {
   (void)menu_layer;
   (void)context;
 
-  if (index->row >= s_canned_count || s_selected_index < 0 || s_selected_index >= s_contact_count) {
+  int row = index->row - canned_row_offset();
+  if (row < 0) {
+    window_stack_pop(false);
+    start_dictation();
+    return;
+  }
+
+  if (row >= s_canned_count || s_selected_index < 0 || s_selected_index >= s_contact_count) {
     vibes_short_pulse();
     return;
   }
 
-  int canned_index = index->row;
+  int canned_index = row;
   bool queued = send_message_request_to_js(s_selected_index, NULL, false, canned_index, true);
   if (!queued) {
     show_notice_modal("Unable to queue canned send.");
@@ -974,13 +1044,7 @@ static void menu_select_long_click(MenuLayer *menu_layer, MenuIndex *index, void
     return;
   }
 
-  if (s_canned_menu_layer) {
-    menu_layer_reload_data(s_canned_menu_layer);
-    MenuIndex selected = (MenuIndex){ .section = 0, .row = 0 };
-    menu_layer_set_selected_index(s_canned_menu_layer, selected, MenuRowAlignCenter, false);
-  }
-
-  window_stack_push(s_canned_window, true);
+  open_canned_window(false);
 }
 
 static void canned_window_load(Window *window) {
@@ -991,6 +1055,8 @@ static void canned_window_load(Window *window) {
   s_canned_menu_layer = menu_layer_create(bounds);
   menu_layer_set_callbacks(s_canned_menu_layer, NULL, (MenuLayerCallbacks){
     .get_num_rows = canned_menu_get_num_rows,
+    .get_header_height = canned_menu_get_header_height,
+    .draw_header = canned_menu_draw_header,
     .draw_row = canned_menu_draw_row,
     .select_click = canned_menu_select_click,
   });
@@ -1141,6 +1207,13 @@ static void init(void) {
   app_message_register_outbox_sent(outbox_sent);
   app_message_register_outbox_failed(outbox_failed);
   app_message_open(512, 512);
+
+#ifdef PBL_TOUCH
+  // Third-party apps are opted out of the system touch bridge by default. Opting in
+  // maps swipes/taps on the MenuLayers to scroll/select when the user has touch
+  // navigation enabled system-wide.
+  app_touch_navigation_enable(true);
+#endif
 
 #ifdef PBL_COLOR
   s_sent_sequence = gdraw_command_sequence_create_with_resource(RESOURCE_ID_SENT_SEQUENCE);
