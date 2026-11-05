@@ -284,23 +284,33 @@ function handleAppMessage(e) {
   statusMsg[KEY_STATUS] = 'Authenticating...';
   Pebble.sendAppMessage(statusMsg);
 
-  // Ensure we have a valid token before sending
-  ensureValidToken(function(error, accessToken) {
-    if (error) {
-      console.log('ERROR: Token validation failed: ' + JSON.stringify(error));
-      var msg = {};
-      msg[KEY_ERROR] = getTokenErrorMessage(error);
-      Pebble.sendAppMessage(msg);
+  // Ensure we have a valid token before sending. If Graph still rejects the
+  // token (revoked early, clock skew), force one refresh and retry before
+  // telling the user to sign in again.
+  function attemptSend(forceRefresh) {
+    ensureValidToken(function(error, accessToken) {
+      if (error) {
+        console.log('ERROR: Token validation failed: ' + JSON.stringify(error));
+        var msg = {};
+        msg[KEY_ERROR] = getTokenErrorMessage(error);
+        Pebble.sendAppMessage(msg);
 
-      if (error.requiresReauth) {
-        sendAuthStateToWatch(AUTH_STATE_REAUTH_REQUIRED);
+        if (error.requiresReauth) {
+          sendAuthStateToWatch(AUTH_STATE_REAUTH_REQUIRED);
+        }
+        return;
       }
-      return;
-    }
 
-    console.log('Token validated successfully, proceeding with email send');
-    sendEmailWithToken(accessToken, contact, outgoingMessageText, s.targetEmail);
-  });
+      console.log('Token validated successfully, proceeding with email send');
+      var onUnauthorized = forceRefresh ? null : function() {
+        console.log('Graph returned 401; forcing token refresh and retrying once');
+        attemptSend(true);
+      };
+      sendEmailWithToken(accessToken, contact, outgoingMessageText, s.targetEmail, onUnauthorized);
+    }, { forceRefresh: forceRefresh });
+  }
+
+  attemptSend(false);
 }
 
 function formatOutgoingMessageText(messageText, settings) {
@@ -315,7 +325,7 @@ function formatOutgoingMessageText(messageText, settings) {
 }
 
 // Separate function to handle the actual email sending
-function sendEmailWithToken(accessToken, contact, messageText, targetEmail) {
+function sendEmailWithToken(accessToken, contact, messageText, targetEmail, onUnauthorized) {
   console.log('Sending email with validated token...');
   
   // Create the JSON object for iOS Shortcut processing.
@@ -350,13 +360,13 @@ function sendEmailWithToken(accessToken, contact, messageText, targetEmail) {
   
   // Try modern fetch first, fallback to XMLHttpRequest
   if (typeof fetch === 'function') {
-    sendEmailWithFetch(accessToken, body, contact);
+    sendEmailWithFetch(accessToken, body, contact, onUnauthorized);
   } else {
-    sendEmailWithXHR(accessToken, body, contact);
+    sendEmailWithXHR(accessToken, body, contact, onUnauthorized);
   }
 }
 
-function sendEmailWithFetch(accessToken, body, contact) {
+function sendEmailWithFetch(accessToken, body, contact, onUnauthorized) {
   console.log('Using fetch API for email sending...');
   
   var timeoutPromise = new Promise(function(resolve, reject) {
@@ -397,11 +407,11 @@ function sendEmailWithFetch(accessToken, body, contact) {
       Pebble.sendAppMessage(msg);
     })
     .catch(function(err) {
-      handleEmailError(err, contact);
+      handleEmailError(err, contact, onUnauthorized);
     });
 }
 
-function sendEmailWithXHR(accessToken, body, contact) {
+function sendEmailWithXHR(accessToken, body, contact, onUnauthorized) {
   console.log('Using XMLHttpRequest for email sending...');
   
   var xhr = new XMLHttpRequest();
@@ -419,7 +429,7 @@ function sendEmailWithXHR(accessToken, body, contact) {
       } else {
         console.log('Email XHR error: ' + xhr.responseText);
         var error = new Error('HTTP ' + xhr.status + ': ' + xhr.responseText);
-        handleEmailError(error, contact);
+        handleEmailError(error, contact, onUnauthorized);
       }
     }
   };
@@ -442,20 +452,28 @@ function sendEmailWithXHR(accessToken, body, contact) {
   xhr.send(JSON.stringify(body));
 }
 
-function handleEmailError(err, contact) {
+function handleEmailError(err, contact, onUnauthorized) {
   console.log('ERROR: Email sending failed');
   console.log('Error details: ' + err);
-  
+
   var errorMsg = String(err && err.message || err);
-  if (errorMsg.includes('401') || errorMsg.includes('unauthorized')) {
+  var lowerMsg = errorMsg.toLowerCase();
+  var isUnauthorized = errorMsg.indexOf('HTTP 401') === 0 || lowerMsg.indexOf('unauthorized') !== -1;
+
+  if (isUnauthorized && typeof onUnauthorized === 'function') {
+    onUnauthorized();
+    return;
+  }
+
+  if (isUnauthorized) {
     errorMsg = 'Access token expired - please sign in again';
-  } else if (errorMsg.includes('403') || errorMsg.includes('forbidden')) {
+  } else if (lowerMsg.indexOf('403') !== -1 || lowerMsg.indexOf('forbidden') !== -1) {
     errorMsg = 'Permission denied - check token permissions';
-  } else if (errorMsg.includes('400')) {
+  } else if (lowerMsg.indexOf('400') !== -1) {
     errorMsg = 'Invalid email format';
-  } else if (errorMsg.includes('timeout')) {
+  } else if (lowerMsg.indexOf('timeout') !== -1) {
     errorMsg = 'Request timed out - check connection';
-  } else if (errorMsg.includes('network') || errorMsg.includes('fetch')) {
+  } else if (lowerMsg.indexOf('network') !== -1 || lowerMsg.indexOf('fetch') !== -1) {
     errorMsg = 'Network error - check connection';
   } else {
     errorMsg = 'Email sending failed: ' + errorMsg;
@@ -795,6 +813,10 @@ var OAUTH_CONFIG = {
   responseMode: 'query' // Authorization code callback in query params
 };
 
+// The shared Patch client is registered with an SPA redirect URI: its token requests
+// must carry an Origin header. Any other client (Web/native) must not get one.
+var SHARED_SPA_CLIENT_ID = 'b9260194-8028-48ae-8907-e30182eda409';
+
 // Hosted configuration page URL (typically a GitHub Pages URL).
 // This page should handle OAuth and return settings via pebblejs://close#<json>
 var CONFIG_PAGE_URL = OAUTH_CONFIG.redirectUri;
@@ -813,6 +835,18 @@ function normalizeTenantId(tenantId) {
   var v = String(tenantId || '').trim();
   if (!v || /^YOUR_/i.test(v)) {
     return OAUTH_CONFIG.tenantId;
+  }
+
+  return v;
+}
+
+// Microsoft's token response lists granted scopes without offline_access. If that
+// list is reused as the request scope, later refreshes and re-sign-ins stop asking
+// for offline_access and the refresh token can be lost, so never request it as-is.
+function normalizeScope(scope) {
+  var v = String(scope || '').trim();
+  if (!/(^|\s)offline_access(\s|$)/i.test(v) || !/mail\.send/i.test(v)) {
+    return OAUTH_CONFIG.scope;
   }
 
   return v;
@@ -858,7 +892,7 @@ function getAuthConfig(settings) {
     clientId: normalizedClientId,
     tenantId: normalizeTenantId(graph.tenantId),
     redirectUri: String(graph.redirectUri || OAUTH_CONFIG.redirectUri),
-    scope: (graph.scope || OAUTH_CONFIG.scope),
+    scope: normalizeScope(graph.scope),
     hasInvalidClientId: invalidStoredCustomClient
   };
 }
@@ -881,8 +915,16 @@ function getOriginFromUri(uri) {
   return match ? match[0] : '';
 }
 
-function setTokenRequestHeaders(xhr, redirectUri) {
+function setTokenRequestHeaders(xhr, redirectUri, clientId) {
   xhr.setRequestHeader('Content-Type', 'application/x-www-form-urlencoded');
+
+  // Entra only accepts an Origin header for SPA redirect URIs, and SPA refresh
+  // tokens die 24h after sign-in no matter how often they are refreshed. The
+  // shared client needs it; a self-hosted Web/native client must not get it,
+  // which is what gives it 90-day sliding refresh tokens.
+  if (normalizeClientId(clientId).toLowerCase() !== SHARED_SPA_CLIENT_ID) {
+    return;
+  }
 
   var origin = getOriginFromUri(redirectUri || OAUTH_CONFIG.redirectUri);
   if (!origin) {
@@ -1069,7 +1111,7 @@ function applyTokenDataToSettings(settings, tokenData, authConfig) {
     refreshToken: String(tokenData.refreshToken || sourceGraph.refreshToken || ''),
     expiresIn: expiresIn,
     tokenType: String(tokenData.tokenType || sourceGraph.tokenType || 'Bearer'),
-    scope: String(tokenData.scope || cfg.scope || sourceGraph.scope || OAUTH_CONFIG.scope),
+    scope: normalizeScope(cfg.scope || sourceGraph.scope),
     clientId: String(tokenData.clientId || cfg.clientId || sourceGraph.clientId || OAUTH_CONFIG.clientId),
     tenantId: String(tokenData.tenantId || cfg.tenantId || sourceGraph.tenantId || OAUTH_CONFIG.tenantId),
     redirectUri: String(tokenData.redirectUri || cfg.redirectUri || sourceGraph.redirectUri || OAUTH_CONFIG.redirectUri),
@@ -1106,7 +1148,7 @@ function refreshAccessToken(authConfig, refreshToken, callback) {
 
   xhr.open('POST', tokenUrl);
   xhr.timeout = TOKEN_REFRESH_TIMEOUT_MS;
-  setTokenRequestHeaders(xhr, authConfig.redirectUri);
+  setTokenRequestHeaders(xhr, authConfig.redirectUri, authConfig.clientId);
   
   xhr.onreadystatechange = function() {
     if (xhr.readyState !== 4) {
@@ -1137,7 +1179,7 @@ function refreshAccessToken(authConfig, refreshToken, callback) {
           refreshToken: newRefreshToken || refreshToken,
           expiresIn: response.expires_in || 3600,
           tokenType: response.token_type,
-          scope: response.scope || authConfig.scope,
+          scope: authConfig.scope,
           clientId: authConfig.clientId,
           tenantId: authConfig.tenantId,
           redirectUri: authConfig.redirectUri,
@@ -1229,7 +1271,7 @@ function redeemAuthorizationCode(authPayload, callback) {
 
   xhr.open('POST', tokenUrl);
   xhr.timeout = TOKEN_REFRESH_TIMEOUT_MS;
-  setTokenRequestHeaders(xhr, authPayload.redirectUri);
+  setTokenRequestHeaders(xhr, authPayload.redirectUri, authPayload.clientId);
 
   xhr.onreadystatechange = function() {
     if (xhr.readyState !== 4) {
@@ -1254,7 +1296,7 @@ function redeemAuthorizationCode(authPayload, callback) {
           refreshToken: response.refresh_token || '',
           expiresIn: response.expires_in || 3600,
           tokenType: response.token_type,
-          scope: response.scope || authPayload.scope,
+          scope: authPayload.scope,
           clientId: authPayload.clientId,
           tenantId: authPayload.tenantId,
           redirectUri: authPayload.redirectUri,
@@ -1319,7 +1361,8 @@ function redeemAuthorizationCodeWithRetry(authPayload, callback) {
 }
 
 // Check if token needs refresh and refresh if necessary
-function ensureValidToken(callback) {
+function ensureValidToken(callback, options) {
+  var opts = options || {};
   var settings = getSettings();
   var authConfig = getAuthConfig(settings);
   var graph = settings.graph || {};
@@ -1341,7 +1384,7 @@ function ensureValidToken(callback) {
   // Check if token is expired or will expire soon.
   var now = Date.now();
   var expiresAt = graph.expiresAt || 0;
-  var shouldRefresh = !graph.accessToken || !expiresAt || (now + TOKEN_REFRESH_BUFFER_MS >= expiresAt);
+  var shouldRefresh = !!opts.forceRefresh || !graph.accessToken || !expiresAt || (now + TOKEN_REFRESH_BUFFER_MS >= expiresAt);
   
   if (!shouldRefresh) {
     console.log('Token is still valid. Expires in ' + Math.round((expiresAt - now) / 1000) + 's');
@@ -1432,7 +1475,7 @@ function extractGraphAuthPayloadFromSettings(settings) {
     state: String(payload.state || ''),
     clientId: normalizeClientId(payload.clientId || sourceGraph.clientId),
     tenantId: normalizeTenantId(payload.tenantId || sourceGraph.tenantId),
-    scope: String(payload.scope || sourceGraph.scope || OAUTH_CONFIG.scope)
+    scope: normalizeScope(payload.scope || sourceGraph.scope)
   };
 }
 
@@ -1445,11 +1488,11 @@ function mergePersistedSettingsFromConfigResponse(newSettings) {
   var nextClientId = normalizeClientId(incomingGraph.clientId || existingGraph.clientId);
   var nextTenantId = normalizeTenantId(incomingGraph.tenantId || existingGraph.tenantId);
   var nextRedirectUri = String(incomingGraph.redirectUri || existingGraph.redirectUri || OAUTH_CONFIG.redirectUri);
-  var nextScope = String(incomingGraph.scope || existingGraph.scope || OAUTH_CONFIG.scope);
+  var nextScope = normalizeScope(incomingGraph.scope || existingGraph.scope);
 
   var existingClientId = normalizeClientId(existingGraph.clientId || OAUTH_CONFIG.clientId);
   var existingTenantId = normalizeTenantId(existingGraph.tenantId || OAUTH_CONFIG.tenantId);
-  var existingScope = String(existingGraph.scope || OAUTH_CONFIG.scope);
+  var existingScope = normalizeScope(existingGraph.scope);
 
   var authConfigChanged =
     nextClientId !== existingClientId ||
