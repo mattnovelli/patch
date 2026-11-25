@@ -62,12 +62,10 @@ static bool s_notice_modal_visible = false;
 static char s_error_modal_message[96] = "Message could not be sent.";
 static char s_notice_modal_message[80] = "Patch";
 
-#ifdef PBL_COLOR
 static GDrawCommandSequence *s_sent_sequence;
 static AppTimer *s_sent_anim_timer;
 static int s_sent_anim_frame = 0;
 static bool s_sent_animating = false;
-#endif
 
 static GColor app_primary_color(void) {
 #ifdef PBL_COLOR
@@ -310,7 +308,6 @@ static void maybe_quit_after_send(void) {
   window_stack_pop_all(false);
 }
 
-#ifdef PBL_COLOR
 static void sent_animation_timer_cb(void *context);
 static void sent_animation_hide_cb(void *context);
 
@@ -449,59 +446,6 @@ static void start_sent_animation(void) {
 
   window_stack_push(s_sent_modal_window, true);
 }
-#else
-static void sent_modal_layer_update_proc(Layer *layer, GContext *ctx) {
-  GRect bounds = layer_get_bounds(layer);
-  graphics_context_set_fill_color(ctx, app_primary_color());
-  graphics_fill_rect(ctx, bounds, 0, GCornerNone);
-
-  graphics_context_set_text_color(ctx, GColorWhite);
-  graphics_draw_text(ctx,
-                     "Sent",
-                     fonts_get_system_font(FONT_KEY_GOTHIC_28_BOLD),
-                     GRect(0, (bounds.size.h / 2) - 28, bounds.size.w, 32),
-                     GTextOverflowModeTrailingEllipsis,
-                     GTextAlignmentCenter,
-                     NULL);
-
-  graphics_draw_text(ctx,
-                     "Message delivered",
-                     fonts_get_system_font(FONT_KEY_GOTHIC_18),
-                     GRect(0, (bounds.size.h / 2) + 4, bounds.size.w, 26),
-                     GTextOverflowModeTrailingEllipsis,
-                     GTextAlignmentCenter,
-                     NULL);
-}
-
-static void sent_animation_hide_cb(void *context) {
-  (void)context;
-
-  s_sent_modal_hide_timer = NULL;
-  if (!s_sent_modal_window || !s_sent_modal_visible) {
-    maybe_quit_after_send();
-    return;
-  }
-
-  if (window_stack_get_top_window() == s_sent_modal_window) {
-    window_stack_pop(true);
-  } else {
-    maybe_quit_after_send();
-  }
-}
-
-static void start_sent_animation(void) {
-  if (!s_sent_modal_window) {
-    maybe_quit_after_send();
-    return;
-  }
-
-  if (s_sent_modal_visible) {
-    return;
-  }
-
-  window_stack_push(s_sent_modal_window, true);
-}
-#endif
 
 static void sent_modal_window_load(Window *window) {
   Layer *window_layer = window_get_root_layer(window);
@@ -517,15 +461,7 @@ static void sent_modal_window_appear(Window *window) {
   (void)window;
   s_sent_modal_visible = true;
 
-#ifdef PBL_COLOR
   sent_modal_begin_animation();
-#else
-  if (s_sent_modal_hide_timer) {
-    app_timer_cancel(s_sent_modal_hide_timer);
-    s_sent_modal_hide_timer = NULL;
-  }
-  s_sent_modal_hide_timer = app_timer_register(SENT_FALLBACK_HOLD_MS, sent_animation_hide_cb, NULL);
-#endif
 
   if (s_sent_modal_layer) {
     layer_mark_dirty(s_sent_modal_layer);
@@ -541,11 +477,9 @@ static void sent_modal_window_disappear(Window *window) {
     s_sent_modal_hide_timer = NULL;
   }
 
-#ifdef PBL_COLOR
   cancel_sent_modal_timers();
   s_sent_animating = false;
   s_sent_anim_frame = 0;
-#endif
 
   maybe_quit_after_send();
 }
@@ -1129,10 +1063,8 @@ static void main_window_load(Window *window) {
 static void main_window_unload(Window *window) {
   (void)window;
 
-#ifdef PBL_COLOR
   cancel_sent_modal_timers();
   s_sent_animating = false;
-#endif
 
   if (s_empty_state_layer) {
     layer_destroy(s_empty_state_layer);
@@ -1163,14 +1095,12 @@ static void init(void) {
   app_message_register_outbox_failed(outbox_failed);
   app_message_open(512, 512);
 
-#ifdef PBL_COLOR
   s_sent_sequence = gdraw_command_sequence_create_with_resource(RESOURCE_ID_SENT_SEQUENCE);
   if (!s_sent_sequence) {
     APP_LOG(APP_LOG_LEVEL_ERROR, "Failed to load sent sequence resource");
   } else {
     APP_LOG(APP_LOG_LEVEL_INFO, "Sent sequence loaded with %d frames", gdraw_command_sequence_get_num_frames(s_sent_sequence));
   }
-#endif
 
   s_sent_modal_window = window_create();
   window_set_window_handlers(s_sent_modal_window, (WindowHandlers){
@@ -1212,14 +1142,12 @@ static void init(void) {
 }
 
 static void deinit(void) {
-#ifdef PBL_COLOR
   cancel_sent_modal_timers();
 
   if (s_sent_sequence) {
     gdraw_command_sequence_destroy(s_sent_sequence);
     s_sent_sequence = NULL;
   }
-#endif
 
   if (s_sent_modal_hide_timer) {
     app_timer_cancel(s_sent_modal_hide_timer);
