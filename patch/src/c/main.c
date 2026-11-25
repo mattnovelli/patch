@@ -249,10 +249,20 @@ static void empty_state_layer_update_proc(Layer *layer, GContext *ctx) {
 
   // Draw a simple icon that reinforces phone-side setup/re-auth.
   GRect icon = GRect((bounds.size.w - 40) / 2, (bounds.size.h / 2) - 58, 40, 40);
-  graphics_context_set_fill_color(ctx, show_reauth ? app_error_bg_color() : app_accent_color());
+#ifdef PBL_COLOR
+  GColor icon_fill = show_reauth ? app_error_bg_color() : app_accent_color();
+  GColor icon_glyph = GColorWhite;
+#else
+  // On monochrome displays the accent color is white (hiding the white glyph)
+  // and the error color is black (hiding the tile against the black
+  // background), so draw a white tile with a black glyph instead.
+  GColor icon_fill = GColorWhite;
+  GColor icon_glyph = GColorBlack;
+#endif
+  graphics_context_set_fill_color(ctx, icon_fill);
   graphics_fill_rect(ctx, icon, 8, GCornersAll);
 
-  graphics_context_set_stroke_color(ctx, GColorWhite);
+  graphics_context_set_stroke_color(ctx, icon_glyph);
   graphics_context_set_stroke_width(ctx, 2);
 
   int16_t left = icon.origin.x + 8;
@@ -265,7 +275,7 @@ static void empty_state_layer_update_proc(Layer *layer, GContext *ctx) {
   graphics_draw_line(ctx, GPoint(left, y2), GPoint(right, y2));
   graphics_draw_line(ctx, GPoint(left, y3), GPoint(right, y3));
 
-  graphics_context_set_fill_color(ctx, GColorWhite);
+  graphics_context_set_fill_color(ctx, icon_glyph);
   graphics_fill_circle(ctx, GPoint(icon.origin.x + 15, y1), 2);
   graphics_fill_circle(ctx, GPoint(icon.origin.x + 25, y2), 2);
   graphics_fill_circle(ctx, GPoint(icon.origin.x + 13, y3), 2);
