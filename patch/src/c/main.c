@@ -85,6 +85,17 @@ static GColor app_accent_color(void) {
 #endif
 }
 
+// Menu highlight background. On monochrome displays the accent color is
+// white, which would match the white highlight text and hide the selection,
+// so use a black highlight bar instead.
+static GColor app_menu_highlight_color(void) {
+#ifdef PBL_COLOR
+  return app_accent_color();
+#else
+  return GColorBlack;
+#endif
+}
+
 static GColor app_error_bg_color(void) {
 #ifdef PBL_COLOR
   return GColorFromRGB(138, 26, 26);
@@ -995,7 +1006,7 @@ static void canned_window_load(Window *window) {
     .select_click = canned_menu_select_click,
   });
   menu_layer_set_normal_colors(s_canned_menu_layer, GColorWhite, GColorBlack);
-  menu_layer_set_highlight_colors(s_canned_menu_layer, app_accent_color(), GColorWhite);
+  menu_layer_set_highlight_colors(s_canned_menu_layer, app_menu_highlight_color(), GColorWhite);
   menu_layer_set_click_config_onto_window(s_canned_menu_layer, window);
   layer_add_child(window_layer, menu_layer_get_layer(s_canned_menu_layer));
 }
@@ -1094,7 +1105,7 @@ static void main_window_load(Window *window) {
     .select_long_click = menu_select_long_click,
   });
   menu_layer_set_normal_colors(s_menu_layer, GColorWhite, GColorBlack);
-  menu_layer_set_highlight_colors(s_menu_layer, app_accent_color(), GColorWhite);
+  menu_layer_set_highlight_colors(s_menu_layer, app_menu_highlight_color(), GColorWhite);
   menu_layer_set_click_config_onto_window(s_menu_layer, window);
   layer_add_child(window_layer, menu_layer_get_layer(s_menu_layer));
 
