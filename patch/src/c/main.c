@@ -62,12 +62,10 @@ static bool s_notice_modal_visible = false;
 static char s_error_modal_message[96] = "Message could not be sent.";
 static char s_notice_modal_message[80] = "Patch";
 
-#ifdef PBL_COLOR
 static GDrawCommandSequence *s_sent_sequence;
 static AppTimer *s_sent_anim_timer;
 static int s_sent_anim_frame = 0;
 static bool s_sent_animating = false;
-#endif
 
 static GColor app_primary_color(void) {
 #ifdef PBL_COLOR
@@ -82,6 +80,17 @@ static GColor app_accent_color(void) {
   return GColorFromRGB(0, 122, 255);
 #else
   return GColorWhite;
+#endif
+}
+
+// Menu highlight background. On monochrome displays the accent color is
+// white, which would match the white highlight text and hide the selection,
+// so use a black highlight bar instead.
+static GColor app_menu_highlight_color(void) {
+#ifdef PBL_COLOR
+  return app_accent_color();
+#else
+  return GColorBlack;
 #endif
 }
 
@@ -238,10 +247,20 @@ static void empty_state_layer_update_proc(Layer *layer, GContext *ctx) {
 
   // Draw a simple icon that reinforces phone-side setup/re-auth.
   GRect icon = GRect((bounds.size.w - 40) / 2, (bounds.size.h / 2) - 58, 40, 40);
-  graphics_context_set_fill_color(ctx, show_reauth ? app_error_bg_color() : app_accent_color());
+#ifdef PBL_COLOR
+  GColor icon_fill = show_reauth ? app_error_bg_color() : app_accent_color();
+  GColor icon_glyph = GColorWhite;
+#else
+  // On monochrome displays the accent color is white (hiding the white glyph)
+  // and the error color is black (hiding the tile against the black
+  // background), so draw a white tile with a black glyph instead.
+  GColor icon_fill = GColorWhite;
+  GColor icon_glyph = GColorBlack;
+#endif
+  graphics_context_set_fill_color(ctx, icon_fill);
   graphics_fill_rect(ctx, icon, 8, GCornersAll);
 
-  graphics_context_set_stroke_color(ctx, GColorWhite);
+  graphics_context_set_stroke_color(ctx, icon_glyph);
   graphics_context_set_stroke_width(ctx, 2);
 
   int16_t left = icon.origin.x + 8;
@@ -254,7 +273,7 @@ static void empty_state_layer_update_proc(Layer *layer, GContext *ctx) {
   graphics_draw_line(ctx, GPoint(left, y2), GPoint(right, y2));
   graphics_draw_line(ctx, GPoint(left, y3), GPoint(right, y3));
 
-  graphics_context_set_fill_color(ctx, GColorWhite);
+  graphics_context_set_fill_color(ctx, icon_glyph);
   graphics_fill_circle(ctx, GPoint(icon.origin.x + 15, y1), 2);
   graphics_fill_circle(ctx, GPoint(icon.origin.x + 25, y2), 2);
   graphics_fill_circle(ctx, GPoint(icon.origin.x + 13, y3), 2);
@@ -289,7 +308,6 @@ static void maybe_quit_after_send(void) {
   window_stack_pop_all(false);
 }
 
-#ifdef PBL_COLOR
 static void sent_animation_timer_cb(void *context);
 static void sent_animation_hide_cb(void *context);
 
@@ -428,59 +446,6 @@ static void start_sent_animation(void) {
 
   window_stack_push(s_sent_modal_window, true);
 }
-#else
-static void sent_modal_layer_update_proc(Layer *layer, GContext *ctx) {
-  GRect bounds = layer_get_bounds(layer);
-  graphics_context_set_fill_color(ctx, app_primary_color());
-  graphics_fill_rect(ctx, bounds, 0, GCornerNone);
-
-  graphics_context_set_text_color(ctx, GColorWhite);
-  graphics_draw_text(ctx,
-                     "Sent",
-                     fonts_get_system_font(FONT_KEY_GOTHIC_28_BOLD),
-                     GRect(0, (bounds.size.h / 2) - 28, bounds.size.w, 32),
-                     GTextOverflowModeTrailingEllipsis,
-                     GTextAlignmentCenter,
-                     NULL);
-
-  graphics_draw_text(ctx,
-                     "Message delivered",
-                     fonts_get_system_font(FONT_KEY_GOTHIC_18),
-                     GRect(0, (bounds.size.h / 2) + 4, bounds.size.w, 26),
-                     GTextOverflowModeTrailingEllipsis,
-                     GTextAlignmentCenter,
-                     NULL);
-}
-
-static void sent_animation_hide_cb(void *context) {
-  (void)context;
-
-  s_sent_modal_hide_timer = NULL;
-  if (!s_sent_modal_window || !s_sent_modal_visible) {
-    maybe_quit_after_send();
-    return;
-  }
-
-  if (window_stack_get_top_window() == s_sent_modal_window) {
-    window_stack_pop(true);
-  } else {
-    maybe_quit_after_send();
-  }
-}
-
-static void start_sent_animation(void) {
-  if (!s_sent_modal_window) {
-    maybe_quit_after_send();
-    return;
-  }
-
-  if (s_sent_modal_visible) {
-    return;
-  }
-
-  window_stack_push(s_sent_modal_window, true);
-}
-#endif
 
 static void sent_modal_window_load(Window *window) {
   Layer *window_layer = window_get_root_layer(window);
@@ -496,15 +461,7 @@ static void sent_modal_window_appear(Window *window) {
   (void)window;
   s_sent_modal_visible = true;
 
-#ifdef PBL_COLOR
   sent_modal_begin_animation();
-#else
-  if (s_sent_modal_hide_timer) {
-    app_timer_cancel(s_sent_modal_hide_timer);
-    s_sent_modal_hide_timer = NULL;
-  }
-  s_sent_modal_hide_timer = app_timer_register(SENT_FALLBACK_HOLD_MS, sent_animation_hide_cb, NULL);
-#endif
 
   if (s_sent_modal_layer) {
     layer_mark_dirty(s_sent_modal_layer);
@@ -520,11 +477,9 @@ static void sent_modal_window_disappear(Window *window) {
     s_sent_modal_hide_timer = NULL;
   }
 
-#ifdef PBL_COLOR
   cancel_sent_modal_timers();
   s_sent_animating = false;
   s_sent_anim_frame = 0;
-#endif
 
   maybe_quit_after_send();
 }
@@ -995,7 +950,7 @@ static void canned_window_load(Window *window) {
     .select_click = canned_menu_select_click,
   });
   menu_layer_set_normal_colors(s_canned_menu_layer, GColorWhite, GColorBlack);
-  menu_layer_set_highlight_colors(s_canned_menu_layer, app_accent_color(), GColorWhite);
+  menu_layer_set_highlight_colors(s_canned_menu_layer, app_menu_highlight_color(), GColorWhite);
   menu_layer_set_click_config_onto_window(s_canned_menu_layer, window);
   layer_add_child(window_layer, menu_layer_get_layer(s_canned_menu_layer));
 }
@@ -1094,7 +1049,7 @@ static void main_window_load(Window *window) {
     .select_long_click = menu_select_long_click,
   });
   menu_layer_set_normal_colors(s_menu_layer, GColorWhite, GColorBlack);
-  menu_layer_set_highlight_colors(s_menu_layer, app_accent_color(), GColorWhite);
+  menu_layer_set_highlight_colors(s_menu_layer, app_menu_highlight_color(), GColorWhite);
   menu_layer_set_click_config_onto_window(s_menu_layer, window);
   layer_add_child(window_layer, menu_layer_get_layer(s_menu_layer));
 
@@ -1108,10 +1063,8 @@ static void main_window_load(Window *window) {
 static void main_window_unload(Window *window) {
   (void)window;
 
-#ifdef PBL_COLOR
   cancel_sent_modal_timers();
   s_sent_animating = false;
-#endif
 
   if (s_empty_state_layer) {
     layer_destroy(s_empty_state_layer);
@@ -1142,14 +1095,12 @@ static void init(void) {
   app_message_register_outbox_failed(outbox_failed);
   app_message_open(512, 512);
 
-#ifdef PBL_COLOR
   s_sent_sequence = gdraw_command_sequence_create_with_resource(RESOURCE_ID_SENT_SEQUENCE);
   if (!s_sent_sequence) {
     APP_LOG(APP_LOG_LEVEL_ERROR, "Failed to load sent sequence resource");
   } else {
     APP_LOG(APP_LOG_LEVEL_INFO, "Sent sequence loaded with %d frames", gdraw_command_sequence_get_num_frames(s_sent_sequence));
   }
-#endif
 
   s_sent_modal_window = window_create();
   window_set_window_handlers(s_sent_modal_window, (WindowHandlers){
@@ -1191,14 +1142,12 @@ static void init(void) {
 }
 
 static void deinit(void) {
-#ifdef PBL_COLOR
   cancel_sent_modal_timers();
 
   if (s_sent_sequence) {
     gdraw_command_sequence_destroy(s_sent_sequence);
     s_sent_sequence = NULL;
   }
-#endif
 
   if (s_sent_modal_hide_timer) {
     app_timer_cancel(s_sent_modal_hide_timer);
