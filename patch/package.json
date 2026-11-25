@@ -32,6 +32,7 @@
     "targetPlatforms": [
       "basalt",
       "chalk",
+      "diorite",
       "emery"
     ],
     "watchapp": {
